@@ -1,30 +1,15 @@
 // ============================================================
-//  ENUMS
+//  ENUMS (union types for Zod compatibility)
 // ============================================================
 
-export enum PartyCategory {
-  SUPPLIER = "supplier",
-  CUSTOMER = "customer",
-  BOTH = "both",
-}
+export type PartyCategory = "supplier" | "customer" | "both";
 
-export enum TransactionType {
-  PURCHASE = "purchase",
-  SALE = "sale",
-}
+export type TransactionType = "purchase" | "sale";
 
-export enum PaymentMethod {
-  CASH = "cash",
-  BANK_TRANSFER = "bank_transfer",
-  CHEQUE = "cheque",
-  UPI = "upi",
-  OTHER = "other",
-}
+export type PaymentMethod = "cash" | "bank_transfer" | "cheque" | "upi" | "other";
+export type PaymentDirection = "payin" | "payout";
 
-export enum ProductUnit {
-  KG = "kg",
-  QUINTAL = "quintal",
-}
+export type ProductUnit = "kg" | "quintal";
 
 // ============================================================
 //  SHARED / BASE TYPES
@@ -197,6 +182,8 @@ export interface TransactionQueryDTO extends PaginationQuery {
 export interface CreatePaymentDTO {
   partyId: string;               // required
   amount: number;                // required — must be > 0
+  transactionId?: string;        // optional — settle a specific transaction
+  direction?: PaymentDirection;
   method?: PaymentMethod;        // default "cash"
   date?: string;
   referenceNumber?: string;      // cheque no / UTR / UPI ref
@@ -204,6 +191,8 @@ export interface CreatePaymentDTO {
 }
 
 export interface UpdatePaymentDTO {
+  transactionId?: string;
+  direction?: PaymentDirection;
   method?: PaymentMethod;
   date?: string;
   referenceNumber?: string;
@@ -216,7 +205,9 @@ export interface PaymentResponseDTO {
     _id: string;
     name: string;
   };
+  transactionId?: string | null;
   amount: number;
+  direction: PaymentDirection;
   method: PaymentMethod;
   date: string;
   referenceNumber: string | null;

@@ -5,10 +5,6 @@ import {
   CreateTransactionDTO,
   CreatePaymentDTO,
   CreateProductionEntryDTO,
-  PartyCategory,
-  TransactionType,
-  PaymentMethod,
-  ProductUnit,
 } from "@/types/dto";
 
 type ValidationResult = { valid: true } | { valid: false; errors: Record<string, string> };
@@ -18,9 +14,19 @@ type ValidationResult = { valid: true } | { valid: false; errors: Record<string,
 function isPositiveNumber(val: unknown): boolean {
   return typeof val === "number" && isFinite(val) && val >= 0;
 }
+
+function isFiniteNumber(val: unknown): boolean {
+  return typeof val === "number" && isFinite(val);
+}
+
 function isObjectId(val: unknown): boolean {
   return typeof val === "string" && /^[a-f\d]{24}$/i.test(val);
 }
+
+const PARTY_CATEGORIES = ["supplier", "customer", "both"] as const;
+const PRODUCT_UNITS = ["kg", "quintal"] as const;
+const TRANSACTION_TYPES = ["purchase", "sale"] as const;
+const PAYMENT_METHODS = ["cash", "bank_transfer", "cheque", "upi", "other"] as const;
 
 // ── Party ────────────────────────────────────────────────────
 
@@ -30,11 +36,12 @@ export function validateCreateParty(body: Partial<CreatePartyDTO>): ValidationRe
   if (!body.name?.trim()) errors.name = "Name is required";
   if (!body.category) {
     errors.category = "Category is required";
-  } else if (!Object.values(PartyCategory).includes(body.category)) {
-    errors.category = `Category must be one of: ${Object.values(PartyCategory).join(", ")}`;
+  } else if (!(PARTY_CATEGORIES as readonly string[]).includes(body.category)) {
+    errors.category = `Category must be one of: ${PARTY_CATEGORIES.join(", ")}`;
   }
-  if (body.openingBalance !== undefined && !isPositiveNumber(body.openingBalance)) {
-    errors.openingBalance = "Opening balance must be a non-negative number";
+  if (body.openingBalance !== undefined && !isFiniteNumber(body.openingBalance)) {
+    errors.openingBalance =
+      "Opening balance must be a valid number (positive = to receive, negative = to pay)";
   }
 
   return Object.keys(errors).length ? { valid: false, errors } : { valid: true };
@@ -43,11 +50,12 @@ export function validateCreateParty(body: Partial<CreatePartyDTO>): ValidationRe
 export function validateUpdateParty(body: Partial<UpdatePartyDTO>): ValidationResult {
   const errors: Record<string, string> = {};
 
-  if (body.category && !Object.values(PartyCategory).includes(body.category)) {
-    errors.category = `Category must be one of: ${Object.values(PartyCategory).join(", ")}`;
+  if (body.category && !(PARTY_CATEGORIES as readonly string[]).includes(body.category)) {
+    errors.category = `Category must be one of: ${PARTY_CATEGORIES.join(", ")}`;
   }
-  if (body.openingBalance !== undefined && typeof body.openingBalance !== "number") {
-    errors.openingBalance = "Opening balance must be a number";
+  if (body.openingBalance !== undefined && !isFiniteNumber(body.openingBalance)) {
+    errors.openingBalance =
+      "Opening balance must be a valid number (positive = to receive, negative = to pay)";
   }
 
   return Object.keys(errors).length ? { valid: false, errors } : { valid: true };
@@ -59,8 +67,8 @@ export function validateCreateProduct(body: Partial<CreateProductDTO>): Validati
   const errors: Record<string, string> = {};
 
   if (!body.name?.trim()) errors.name = "Product name is required";
-  if (body.unit && !Object.values(ProductUnit).includes(body.unit)) {
-    errors.unit = `Unit must be one of: ${Object.values(ProductUnit).join(", ")}`;
+  if (body.unit && !(PRODUCT_UNITS as readonly string[]).includes(body.unit)) {
+    errors.unit = `Unit must be one of: ${PRODUCT_UNITS.join(", ")}`;
   }
   if (body.currentStock !== undefined && !isPositiveNumber(body.currentStock)) {
     errors.currentStock = "Current stock must be a non-negative number";
@@ -76,7 +84,7 @@ export function validateCreateTransaction(body: Partial<CreateTransactionDTO>): 
 
   if (!body.type) {
     errors.type = "Transaction type is required";
-  } else if (!Object.values(TransactionType).includes(body.type)) {
+  } else if (!(TRANSACTION_TYPES as readonly string[]).includes(body.type)) {
     errors.type = `Type must be "purchase" or "sale"`;
   }
   if (!body.partyId) {
@@ -116,13 +124,19 @@ export function validateCreatePayment(body: Partial<CreatePaymentDTO>): Validati
   } else if (!isObjectId(body.partyId)) {
     errors.partyId = "Party ID must be a valid ObjectId";
   }
+  if (body.transactionId !== undefined && !isObjectId(body.transactionId)) {
+    errors.transactionId = "Transaction ID must be a valid ObjectId";
+  }
   if (body.amount === undefined || body.amount === null) {
     errors.amount = "Amount is required";
   } else if (typeof body.amount !== "number" || body.amount <= 0) {
     errors.amount = "Amount must be a positive number";
   }
-  if (body.method && !Object.values(PaymentMethod).includes(body.method)) {
-    errors.method = `Method must be one of: ${Object.values(PaymentMethod).join(", ")}`;
+  if (body.direction && !["payin", "payout"].includes(body.direction)) {
+    errors.direction = "Direction must be either payin or payout";
+  }
+  if (body.method && !(PAYMENT_METHODS as readonly string[]).includes(body.method)) {
+    errors.method = `Method must be one of: ${PAYMENT_METHODS.join(", ")}`;
   }
 
   return Object.keys(errors).length ? { valid: false, errors } : { valid: true };

@@ -36,29 +36,59 @@ const TransactionSchema: Schema = new Schema(
     quantity: {
       type: mongoose.Types.Decimal128,
       required: true,
+      validate: {
+        validator: function (v: mongoose.Types.Decimal128) {
+          return parseFloat(v.toString()) >= 0;
+        },
+        message: "Quantity cannot be negative",
+      },
       get: (v: mongoose.Types.Decimal128) => (v ? parseFloat(v.toString()) : 0.0),
     },
     // Market rate on this specific day — locked at time of transaction
     ratePerKg: {
       type: mongoose.Types.Decimal128,
       required: true,
+      validate: {
+        validator: function (v: mongoose.Types.Decimal128) {
+          return parseFloat(v.toString()) >= 0;
+        },
+        message: "Rate per KG cannot be negative",
+      },
       get: (v: mongoose.Types.Decimal128) => (v ? parseFloat(v.toString()) : 0.0),
     },
     // Auto-calculated: quantity * ratePerKg
     totalAmount: {
       type: mongoose.Types.Decimal128,
+      validate: {
+        validator: function (v: mongoose.Types.Decimal128) {
+          return parseFloat(v.toString()) >= 0;
+        },
+        message: "Total amount cannot be negative",
+      },
       get: (v: mongoose.Types.Decimal128) => (v ? parseFloat(v.toString()) : 0.0),
     },
     // How much was paid at the time (0 = full credit/due)
     paidAmount: {
       type: mongoose.Types.Decimal128,
       default: 0.0,
+      validate: {
+        validator: function (v: mongoose.Types.Decimal128) {
+          return parseFloat(v.toString()) >= 0;
+        },
+        message: "Paid amount cannot be negative",
+      },
       get: (v: mongoose.Types.Decimal128) => (v ? parseFloat(v.toString()) : 0.0),
     },
     // Auto-calculated: totalAmount - paidAmount
     balanceAmount: {
       type: mongoose.Types.Decimal128,
       default: 0.0,
+      validate: {
+        validator: function (v: mongoose.Types.Decimal128) {
+          return parseFloat(v.toString()) >= 0;
+        },
+        message: "Balance amount cannot be negative",
+      },
       get: (v: mongoose.Types.Decimal128) => (v ? parseFloat(v.toString()) : 0.0),
     },
     date: {
@@ -80,35 +110,44 @@ const TransactionSchema: Schema = new Schema(
 // ─── PRE-SAVE MIDDLEWARE ─────────────────────────────────────────────────────
 
 TransactionSchema.pre("save", async function () {
-  const doc = this as unknown as ITransaction;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const doc = this as any;
   const Product = mongoose.model("Product");
 
-  // 1. Auto-calculate totalAmount and balanceAmount
-  const qty = parseFloat(doc.quantity.toString());
+  // ── 1. Always recalculate totalAmount and balanceAmount on every save.
+  // This also handles the case where a payment route updates paidAmount and
+  // calls txn.save() — balanceAmount will automatically stay in sync.
+  const qty  = parseFloat(doc.quantity.toString());
   const rate = parseFloat(doc.ratePerKg.toString());
   const paid = parseFloat(doc.paidAmount.toString());
 
   const total = qty * rate;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (this as any).totalAmount = mongoose.Types.Decimal128.fromString(total.toFixed(2));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (this as any).balanceAmount = mongoose.Types.Decimal128.fromString(
-    (total - paid).toFixed(2)
-  );
+  doc.totalAmount   = mongoose.Types.Decimal128.fromString(total.toFixed(2));
+  doc.balanceAmount = mongoose.Types.Decimal128.fromString((total - paid).toFixed(2));
 
-  // 2. Update stock in Product collection
-  const product = await Product.findById(doc.productId);
+  // ── 2. Stock adjustment — only on NEW documents.
+  // If we updated stock on every save (including payment updates), we would
+  // add/deduct stock again every time balanceAmount is recalculated. The stock
+  // movement happened once, at the time of the original transaction.
+  if (!this.isNew) return;
+
+  // Pass through the active session (if the caller used one) so this operation
+  // participates in the same atomic transaction and can be rolled back on failure.
+  const session = this.$session();
+  const findOptions = session ? { session } : {};
+
+  const product = await Product.findById(doc.productId, null, findOptions);
   if (!product) throw new Error("Product not found");
 
   const currentStock = parseFloat(product.currentStock.toString());
 
   if (doc.type === "purchase") {
-    // Buying raw nuts → stock increases
+    // Buying → stock increases
     product.currentStock = mongoose.Types.Decimal128.fromString(
       (currentStock + qty).toFixed(3)
     );
   } else if (doc.type === "sale") {
-    // Selling → stock decreases
+    // Selling → stock decreases; guard against oversell
     if (currentStock < qty) {
       throw new Error(
         `Insufficient stock. Available: ${currentStock} kg, Requested: ${qty} kg`
@@ -119,7 +158,8 @@ TransactionSchema.pre("save", async function () {
     );
   }
 
-  await product.save();
+  // Save product within the same session so both writes succeed or both roll back
+  await product.save(session ? { session } : {});
 });
 
 const TransactionModel =

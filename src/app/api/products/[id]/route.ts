@@ -8,30 +8,19 @@ import {
   validationErrorResponse,
   badRequestResponse,
 } from "@/lib/apiResponse";
-import { UpdateProductDTO, ProductResponseDTO } from "@/types/dto";
-import mongoose from "mongoose";
+import { UpdateProductDTO } from "@/types/dto";
+import { toProductDTO } from "@/lib/dto-mappers";
+import { requireApiAuth } from "@/lib/api-auth";
 
 type RouteContext = { params: Promise<{ id: string }> };
-
-function toProductDTO(p: Record<string, unknown>): ProductResponseDTO {
-  return {
-    _id: (p._id as { toString(): string }).toString(),
-    name: p.name as string,
-    unit: p.unit as ProductResponseDTO["unit"],
-    currentStock: parseFloat(
-      (p.currentStock as mongoose.Types.Decimal128)?.toString() ?? "0"
-    ),
-    description: (p.description as string) ?? null,
-    isActive: p.isActive as boolean,
-    createdAt: (p.createdAt as Date).toISOString(),
-    updatedAt: (p.updatedAt as Date).toISOString(),
-  };
-}
 
 // ── GET /api/products/:id ─────────────────────────────────────
 
 export async function GET(_req: NextRequest, { params }: RouteContext) {
   try {
+    const auth = requireApiAuth(_req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
     const { id } = await params;
 
@@ -51,6 +40,9 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 
 export async function PUT(req: NextRequest, { params }: RouteContext) {
   try {
+    const auth = requireApiAuth(req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
     const { id } = await params;
 
@@ -96,19 +88,30 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
 
 export async function DELETE(_req: NextRequest, { params }: RouteContext) {
   try {
+    const auth = requireApiAuth(_req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
     const { id } = await params;
 
-    const Transaction = mongoose.model("Transaction");
-    const txnCount = await Transaction.countDocuments({ productId: id });
-    if (txnCount > 0) {
+    const Transaction = (await import("@/models/transaction.model")).default;
+    const ProductionEntry = (await import("@/models/productionEntries.model")).default;
+
+    const [txnCount, productionRefCount] = await Promise.all([
+      Transaction.countDocuments({ productId: id }),
+      ProductionEntry.countDocuments({
+        $or: [{ inputProductId: id }, { outputProductId: id }],
+      }),
+    ]);
+
+    if (txnCount > 0 || productionRefCount > 0) {
       const product = await Product.findByIdAndUpdate(
         id,
         { $set: { isActive: false } },
         { new: true }
       );
       if (!product) return notFoundResponse("Product");
-      return successResponse(null, "Product deactivated (has transaction history)");
+      return successResponse(null, "Product deactivated (has ledger/production history)");
     }
 
     await Product.findByIdAndDelete(id);

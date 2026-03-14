@@ -13,7 +13,6 @@ interface MongooseCache {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var mongooseCache: MongooseCache;
 }
 
@@ -26,6 +25,9 @@ async function dbConnect(): Promise<typeof mongoose> {
   if (!cached.promise) {
     cached.promise = mongoose.connect(MONGODB_URI, {
       bufferCommands: false,
+      tls: true,
+      tlsInsecure: process.env.NODE_ENV !== "production",
+      serverSelectionTimeoutMS: 10000,
     });
   }
 

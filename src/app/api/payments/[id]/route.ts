@@ -7,33 +7,21 @@ import {
   handleApiError,
   badRequestResponse,
 } from "@/lib/apiResponse";
-import { UpdatePaymentDTO, PaymentResponseDTO } from "@/types/dto";
+import { UpdatePaymentDTO } from "@/types/dto";
 import mongoose from "mongoose";
+import { centsToMoneyString, toMoneyCents } from "@/lib/financial";
+import { toPaymentDTO } from "@/lib/dto-mappers";
+import { requireApiAuth } from "@/lib/api-auth";
 
 type RouteContext = { params: Promise<{ id: string }> };
-
-function toPaymentDTO(p: Record<string, unknown>): PaymentResponseDTO {
-  const party = p.partyId as Record<string, unknown>;
-  return {
-    _id: (p._id as { toString(): string }).toString(),
-    party: {
-      _id: (party._id as { toString(): string }).toString(),
-      name: party.name as string,
-    },
-    amount: parseFloat((p.amount as mongoose.Types.Decimal128).toString()),
-    method: p.method as PaymentResponseDTO["method"],
-    date: (p.date as Date).toISOString(),
-    referenceNumber: (p.referenceNumber as string) ?? null,
-    notes: (p.notes as string) ?? null,
-    createdAt: (p.createdAt as Date).toISOString(),
-    updatedAt: (p.updatedAt as Date).toISOString(),
-  };
-}
 
 // ── GET /api/payments/:id ─────────────────────────────────────
 
 export async function GET(_req: NextRequest, { params }: RouteContext) {
   try {
+    const auth = requireApiAuth(_req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
     const { id } = await params;
     const payment = await Payment.findById(id)
@@ -50,15 +38,21 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 }
 
 // ── PUT /api/payments/:id ─────────────────────────────────────
-// Only metadata (method, date, reference, notes) is editable.
+// Only metadata (direction, method, date, reference, notes) is editable.
 // Amount & party are immutable after recording.
 
 export async function PUT(req: NextRequest, { params }: RouteContext) {
   try {
+    const auth = requireApiAuth(req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
     const { id } = await params;
 
     const body: Partial<UpdatePaymentDTO> = await req.json();
+
+    const existingPayment = await Payment.findById(id);
+    if (!existingPayment) return notFoundResponse("Payment");
 
     if ("amount" in body || "partyId" in body) {
       return badRequestResponse(
@@ -66,7 +60,19 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
       );
     }
 
+    // Linked transaction settlements must keep their original direction for math integrity.
+    if (
+      existingPayment.transactionId &&
+      body.direction !== undefined &&
+      body.direction !== existingPayment.direction
+    ) {
+      return badRequestResponse(
+        "Direction cannot be changed for a payment linked to a transaction."
+      );
+    }
+
     const updateFields: Record<string, unknown> = {};
+    if (body.direction !== undefined) updateFields.direction = body.direction;
     if (body.method !== undefined) updateFields.method = body.method;
     if (body.date !== undefined) updateFields.date = new Date(body.date);
     if (body.referenceNumber !== undefined)
@@ -96,10 +102,50 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
 
 export async function DELETE(_req: NextRequest, { params }: RouteContext) {
   try {
+    const auth = requireApiAuth(_req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
     const { id } = await params;
-    const payment = await Payment.findByIdAndDelete(id);
-    if (!payment) return notFoundResponse("Payment");
+    const Transaction = (await import("@/models/transaction.model")).default;
+    const session = await mongoose.startSession();
+    let foundPayment = true;
+
+    try {
+      await session.withTransaction(async () => {
+        const payment = await Payment.findById(id, null, { session });
+        if (!payment) {
+          foundPayment = false;
+          return;
+        }
+
+        if (payment.transactionId) {
+          const transaction = await Transaction.findById(payment.transactionId, null, {
+            session,
+          });
+
+          if (transaction) {
+            const paymentAmount = parseFloat(payment.amount.toString());
+            const txnPaid = parseFloat(transaction.paidAmount.toString());
+            const paymentAmountCents = toMoneyCents(paymentAmount);
+            const txnPaidCents = toMoneyCents(txnPaid);
+            const nextPaidCents = Math.max(0, txnPaidCents - paymentAmountCents);
+
+            transaction.paidAmount = mongoose.Types.Decimal128.fromString(
+              centsToMoneyString(nextPaidCents)
+            );
+            await transaction.save({ validateBeforeSave: false, session });
+          }
+        }
+
+        await Payment.deleteOne({ _id: id }, { session });
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    if (!foundPayment) return notFoundResponse("Payment");
+
     return successResponse(null, "Payment deleted successfully");
   } catch (err) {
     return handleApiError(err);

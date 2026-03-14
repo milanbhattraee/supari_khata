@@ -10,29 +10,19 @@ import {
   buildMeta,
 } from "@/lib/apiResponse";
 import { validateCreateProduct } from "@/lib/validators";
-import { CreateProductDTO, ProductResponseDTO } from "@/types/dto";
+import { CreateProductDTO } from "@/types/dto";
 import mongoose from "mongoose";
-
-function toProductDTO(p: Record<string, unknown>): ProductResponseDTO {
-  return {
-    _id: (p._id as { toString(): string }).toString(),
-    name: p.name as string,
-    unit: p.unit as ProductResponseDTO["unit"],
-    currentStock: parseFloat(
-      (p.currentStock as mongoose.Types.Decimal128)?.toString() ?? "0"
-    ),
-    description: (p.description as string) ?? null,
-    isActive: p.isActive as boolean,
-    createdAt: (p.createdAt as Date).toISOString(),
-    updatedAt: (p.updatedAt as Date).toISOString(),
-  };
-}
+import { toProductDTO } from "@/lib/dto-mappers";
+import { requireApiAuth } from "@/lib/api-auth";
 
 // ── GET /api/products ─────────────────────────────────────────
 // Query params: page, limit, search, isActive, lowStock (threshold kg)
 
 export async function GET(req: NextRequest) {
   try {
+    const auth = requireApiAuth(req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
 
     const { searchParams } = req.nextUrl;
@@ -71,6 +61,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = requireApiAuth(req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
 
     const body: Partial<CreateProductDTO> = await req.json();

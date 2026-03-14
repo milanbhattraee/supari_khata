@@ -10,43 +10,21 @@ import {
   buildMeta,
 } from "@/lib/apiResponse";
 import { validateCreateTransaction } from "@/lib/validators";
-import { CreateTransactionDTO, TransactionResponseDTO, TransactionQueryDTO } from "@/types/dto";
+import { CreateTransactionDTO, TransactionQueryDTO } from "@/types/dto";
 import mongoose from "mongoose";
-
-function toTransactionDTO(t: Record<string, unknown>): TransactionResponseDTO {
-  const party = t.partyId as Record<string, unknown>;
-  const product = t.productId as Record<string, unknown>;
-
-  return {
-    _id: (t._id as { toString(): string }).toString(),
-    type: t.type as TransactionResponseDTO["type"],
-    party: {
-      _id: (party._id as { toString(): string }).toString(),
-      name: party.name as string,
-      category: party.category as TransactionResponseDTO["party"]["category"],
-    },
-    product: {
-      _id: (product._id as { toString(): string }).toString(),
-      name: product.name as string,
-      unit: product.unit as TransactionResponseDTO["product"]["unit"],
-    },
-    quantity: parseFloat((t.quantity as mongoose.Types.Decimal128).toString()),
-    ratePerKg: parseFloat((t.ratePerKg as mongoose.Types.Decimal128).toString()),
-    totalAmount: parseFloat((t.totalAmount as mongoose.Types.Decimal128).toString()),
-    paidAmount: parseFloat((t.paidAmount as mongoose.Types.Decimal128).toString()),
-    balanceAmount: parseFloat((t.balanceAmount as mongoose.Types.Decimal128).toString()),
-    date: (t.date as Date).toISOString(),
-    notes: (t.notes as string) ?? null,
-    createdAt: (t.createdAt as Date).toISOString(),
-    updatedAt: (t.updatedAt as Date).toISOString(),
-  };
-}
+import { toTransactionDTO } from "@/lib/dto-mappers";
+import { centsToMoneyString, toMoneyCents } from "@/lib/financial";
+import { requireApiAuth } from "@/lib/api-auth";
+import { buildUtcDateRange } from "@/lib/nepal-date-range";
 
 // ── GET /api/transactions ─────────────────────────────────────
 // Supports: type, partyId, productId, fromDate, toDate, page, limit
 
 export async function GET(req: NextRequest) {
   try {
+    const auth = requireApiAuth(req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
 
     const { searchParams } = req.nextUrl;
@@ -58,12 +36,8 @@ export async function GET(req: NextRequest) {
     if (query.type) filter.type = query.type;
     if (query.partyId) filter.partyId = new mongoose.Types.ObjectId(query.partyId);
     if (query.productId) filter.productId = new mongoose.Types.ObjectId(query.productId);
-    if (query.fromDate || query.toDate) {
-      filter.date = {
-        ...(query.fromDate && { $gte: new Date(query.fromDate) }),
-        ...(query.toDate && { $lte: new Date(query.toDate) }),
-      };
-    }
+    const dateRange = buildUtcDateRange(query.fromDate, query.toDate);
+    if (dateRange) filter.date = dateRange;
 
     const [transactions, total] = await Promise.all([
       Transaction.find(filter)
@@ -94,6 +68,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = requireApiAuth(req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
 
     const body: Partial<CreateTransactionDTO> = await req.json();
@@ -104,28 +81,46 @@ export async function POST(req: NextRequest) {
     // Validate paidAmount doesn't exceed total (pre-check before hitting DB)
     // Full validation in pre-save, but this gives a cleaner error message
     if (body.paidAmount) {
-      const estimatedTotal = body.quantity! * body.ratePerKg!;
-      if (body.paidAmount > estimatedTotal) {
+      const estimatedTotalCents = toMoneyCents(body.quantity! * body.ratePerKg!);
+      const paidAmountCents = toMoneyCents(body.paidAmount);
+      if (paidAmountCents > estimatedTotalCents) {
         return validationErrorResponse({
-          paidAmount: `Paid amount (${body.paidAmount}) cannot exceed total bill (${estimatedTotal})`,
+          paidAmount: `Paid amount (${centsToMoneyString(
+            paidAmountCents
+          )}) cannot exceed total bill (${centsToMoneyString(estimatedTotalCents)})`,
         });
       }
     }
 
-    const transaction = await new Transaction({
-      type: body.type,
-      partyId: body.partyId,
-      productId: body.productId,
-      quantity: mongoose.Types.Decimal128.fromString(String(body.quantity)),
-      ratePerKg: mongoose.Types.Decimal128.fromString(String(body.ratePerKg)),
-      paidAmount: mongoose.Types.Decimal128.fromString(
-        String(body.paidAmount ?? 0)
-      ),
-      date: body.date ? new Date(body.date) : new Date(),
-      notes: body.notes?.trim(),
-    }).save(); // triggers pre-save middleware
+    const session = await mongoose.startSession();
+    let transactionId: mongoose.Types.ObjectId | null = null;
 
-    const populated = await Transaction.findById(transaction._id)
+    try {
+      await session.withTransaction(async () => {
+        const transaction = await new Transaction({
+          type: body.type,
+          partyId: body.partyId,
+          productId: body.productId,
+          quantity: mongoose.Types.Decimal128.fromString(String(body.quantity)),
+          ratePerKg: mongoose.Types.Decimal128.fromString(String(body.ratePerKg)),
+          paidAmount: mongoose.Types.Decimal128.fromString(
+            String(body.paidAmount ?? 0)
+          ),
+          date: body.date ? new Date(body.date) : new Date(),
+          notes: body.notes?.trim(),
+        }).save({ session }); // triggers pre-save middleware using the same session
+
+        transactionId = transaction._id as mongoose.Types.ObjectId;
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    if (!transactionId) {
+      throw new Error("Transaction creation failed");
+    }
+
+    const populated = await Transaction.findById(transactionId)
       .populate("partyId", "name category")
       .populate("productId", "name unit")
       .lean();

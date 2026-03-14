@@ -10,10 +10,21 @@ const PaymentSchema = new Schema(
       ref: "Party",
       required: true,
     },
+    transactionId: {
+      type: Schema.Types.ObjectId,
+      ref: "Transaction",
+      required: false,
+    },
     amount: {
       type: mongoose.Types.Decimal128,
       required: [true, "Payment amount is required"],
+      min: [0, "Amount cannot be negative"],
       get: (v:mongoose.Types.Decimal128) => (v ? parseFloat(v.toString()) : 0.0),
+    },
+    direction: {
+      type: String,
+      enum: ["payin", "payout"],
+      default: "payin",
     },
     // "cash" | "bank_transfer" | "cheque" | "upi"
     method: {

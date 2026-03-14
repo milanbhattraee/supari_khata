@@ -7,44 +7,21 @@ import {
   handleApiError,
   badRequestResponse,
 } from "@/lib/apiResponse";
-import { UpdateTransactionDTO, TransactionResponseDTO } from "@/types/dto";
+import { UpdateTransactionDTO } from "@/types/dto";
 import mongoose from "mongoose";
+import { roundMoney } from "@/lib/financial";
+import { toTransactionDTO } from "@/lib/dto-mappers";
+import { requireApiAuth } from "@/lib/api-auth";
 
 type RouteContext = { params: Promise<{ id: string }> };
-
-function toTransactionDTO(t: Record<string, unknown>): TransactionResponseDTO {
-  const party = t.partyId as Record<string, unknown>;
-  const product = t.productId as Record<string, unknown>;
-
-  return {
-    _id: (t._id as { toString(): string }).toString(),
-    type: t.type as TransactionResponseDTO["type"],
-    party: {
-      _id: (party._id as { toString(): string }).toString(),
-      name: party.name as string,
-      category: party.category as TransactionResponseDTO["party"]["category"],
-    },
-    product: {
-      _id: (product._id as { toString(): string }).toString(),
-      name: product.name as string,
-      unit: product.unit as TransactionResponseDTO["product"]["unit"],
-    },
-    quantity: parseFloat((t.quantity as mongoose.Types.Decimal128).toString()),
-    ratePerKg: parseFloat((t.ratePerKg as mongoose.Types.Decimal128).toString()),
-    totalAmount: parseFloat((t.totalAmount as mongoose.Types.Decimal128).toString()),
-    paidAmount: parseFloat((t.paidAmount as mongoose.Types.Decimal128).toString()),
-    balanceAmount: parseFloat((t.balanceAmount as mongoose.Types.Decimal128).toString()),
-    date: (t.date as Date).toISOString(),
-    notes: (t.notes as string) ?? null,
-    createdAt: (t.createdAt as Date).toISOString(),
-    updatedAt: (t.updatedAt as Date).toISOString(),
-  };
-}
 
 // ── GET /api/transactions/:id ─────────────────────────────────
 
 export async function GET(_req: NextRequest, { params }: RouteContext) {
   try {
+    const auth = requireApiAuth(_req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
     const { id } = await params;
 
@@ -70,6 +47,9 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 
 export async function PUT(req: NextRequest, { params }: RouteContext) {
   try {
+    const auth = requireApiAuth(req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
     const { id } = await params;
 
@@ -88,45 +68,33 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
     const transaction = await Transaction.findById(id);
     if (!transaction) return notFoundResponse("Transaction");
 
-    // If paidAmount is being updated, recalculate balanceAmount
+    // If paidAmount is being updated, validate on rounded monetary value first.
     if (body.paidAmount !== undefined) {
+      if (typeof body.paidAmount !== "number" || !Number.isFinite(body.paidAmount)) {
+        return badRequestResponse("Paid amount must be a valid number");
+      }
+
+      if (body.paidAmount < 0) {
+        return badRequestResponse("Paid amount cannot be negative");
+      }
+
       const total = parseFloat(transaction.totalAmount.toString());
-      if (body.paidAmount > total) {
+      const nextPaid = roundMoney(body.paidAmount);
+      if (nextPaid > total) {
         return badRequestResponse(
           `Paid amount cannot exceed total bill of ${total}`
         );
       }
       transaction.paidAmount = mongoose.Types.Decimal128.fromString(
-        String(body.paidAmount)
-      );
-      transaction.balanceAmount = mongoose.Types.Decimal128.fromString(
-        String(total - body.paidAmount)
+        nextPaid.toFixed(2)
       );
     }
 
     if (body.notes !== undefined) transaction.notes = body.notes;
     if (body.date !== undefined) transaction.date = new Date(body.date);
 
-    // Use save with { validateBeforeSave: false } to skip pre-save stock logic
-    // (we only want that on initial creation)
-    await Transaction.findByIdAndUpdate(
-      id,
-      {
-        $set: {
-          ...(body.notes !== undefined && { notes: body.notes }),
-          ...(body.date !== undefined && { date: new Date(body.date) }),
-          ...(body.paidAmount !== undefined && {
-            paidAmount: mongoose.Types.Decimal128.fromString(String(body.paidAmount)),
-            balanceAmount: mongoose.Types.Decimal128.fromString(
-              String(
-                parseFloat(transaction.totalAmount.toString()) - body.paidAmount
-              )
-            ),
-          }),
-        },
-      },
-      { new: true }
-    );
+    // Save lets model middleware keep total and balance math authoritative.
+    await transaction.save({ validateBeforeSave: false });
 
     const updated = await Transaction.findById(id)
       .populate("partyId", "name category")
@@ -148,6 +116,9 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
 
 export async function DELETE(_req: NextRequest, { params }: RouteContext) {
   try {
+    const auth = requireApiAuth(_req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
     void params;
     // Financial transactions should not be deleted in production.

@@ -10,13 +10,18 @@ import {
   buildMeta,
 } from "@/lib/apiResponse";
 import { validateCreateParty } from "@/lib/validators";
-import { CreatePartyDTO, PartyCategory, PartyResponseDTO } from "@/types/dto";
+import { CreatePartyDTO, PartyResponseDTO } from "@/types/dto";
+import { toPartyDTO } from "@/lib/dto-mappers";
+import { requireApiAuth } from "@/lib/api-auth";
 
 // ── GET /api/parties ─────────────────────────────────────────
 // Query params: page, limit, search (name/phone), category
 
 export async function GET(req: NextRequest) {
   try {
+    const auth = requireApiAuth(req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
 
     const { searchParams } = req.nextUrl;
@@ -46,17 +51,10 @@ export async function GET(req: NextRequest) {
       Party.countDocuments(filter),
     ]);
 
-    const data: PartyResponseDTO[] = parties.map((p) => ({
-      _id: p._id.toString(),
-      name: p.name,
-      phone: p.phone ?? null,
-      address: p.address ?? null,
-      category: p.category as PartyCategory,
-      openingBalance: parseFloat(p.openingBalance?.toString() ?? "0"),
-      isActive: p.isActive,
-      createdAt: p.createdAt.toISOString(),
-      updatedAt: p.updatedAt.toISOString(),
-    }));
+    const data: PartyResponseDTO[] = parties.map((p) =>
+      toPartyDTO(p as unknown as Record<string, unknown>)
+    );
+    console.log("Fetched parties:", data);
 
     return successResponse(data, "Parties fetched", 200, buildMeta(total, page, limit));
   } catch (err) {
@@ -68,6 +66,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = requireApiAuth(req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
 
     const body: Partial<CreatePartyDTO> = await req.json();
@@ -83,17 +84,10 @@ export async function POST(req: NextRequest) {
       openingBalance: body.openingBalance ?? 0,
     });
 
-    const data: PartyResponseDTO = {
-      _id: party._id.toString(),
-      name: party.name,
-      phone: party.phone ?? null,
-      address: party.address ?? null,
-      category: party.category as PartyCategory,
-      openingBalance: parseFloat(party.openingBalance?.toString() ?? "0"),
-      isActive: party.isActive,
-      createdAt: party.createdAt.toISOString(),
-      updatedAt: party.updatedAt.toISOString(),
-    };
+    const data: PartyResponseDTO = toPartyDTO(
+      party.toObject() as unknown as Record<string, unknown>
+    );
+
 
     return createdResponse(data, "Party created successfully");
   } catch (err) {

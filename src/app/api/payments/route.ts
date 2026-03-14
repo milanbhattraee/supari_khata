@@ -10,25 +10,33 @@ import {
   buildMeta,
 } from "@/lib/apiResponse";
 import { validateCreatePayment } from "@/lib/validators";
-import { CreatePaymentDTO, PaymentResponseDTO, PaymentQueryDTO } from "@/types/dto";
+import { CreatePaymentDTO, PaymentQueryDTO } from "@/types/dto";
 import mongoose from "mongoose";
+import {
+  centsToMoneyString,
+  toMoneyCents,
+} from "@/lib/financial";
+import { toPaymentDTO } from "@/lib/dto-mappers";
+import { requireApiAuth } from "@/lib/api-auth";
+import { buildUtcDateRange } from "@/lib/nepal-date-range";
 
-function toPaymentDTO(p: Record<string, unknown>): PaymentResponseDTO {
-  const party = p.partyId as Record<string, unknown>;
-  return {
-    _id: (p._id as { toString(): string }).toString(),
-    party: {
-      _id: (party._id as { toString(): string }).toString(),
-      name: party.name as string,
-    },
-    amount: parseFloat((p.amount as mongoose.Types.Decimal128).toString()),
-    method: p.method as PaymentResponseDTO["method"],
-    date: (p.date as Date).toISOString(),
-    referenceNumber: (p.referenceNumber as string) ?? null,
-    notes: (p.notes as string) ?? null,
-    createdAt: (p.createdAt as Date).toISOString(),
-    updatedAt: (p.updatedAt as Date).toISOString(),
-  };
+type RouteValidationFailure = {
+  type: "validation";
+  errors: Record<string, string>;
+};
+
+function routeValidationFailure(errors: Record<string, string>): RouteValidationFailure {
+  return { type: "validation", errors };
+}
+
+function isRouteValidationFailure(error: unknown): error is RouteValidationFailure {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "type" in error &&
+    (error as { type?: unknown }).type === "validation" &&
+    "errors" in error
+  );
 }
 
 // ── GET /api/payments ─────────────────────────────────────────
@@ -36,6 +44,9 @@ function toPaymentDTO(p: Record<string, unknown>): PaymentResponseDTO {
 
 export async function GET(req: NextRequest) {
   try {
+    const auth = requireApiAuth(req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
 
     const { searchParams } = req.nextUrl;
@@ -45,12 +56,8 @@ export async function GET(req: NextRequest) {
     const filter: Record<string, unknown> = {};
     if (query.partyId) filter.partyId = new mongoose.Types.ObjectId(query.partyId);
     if (query.method) filter.method = query.method;
-    if (query.fromDate || query.toDate) {
-      filter.date = {
-        ...(query.fromDate && { $gte: new Date(query.fromDate) }),
-        ...(query.toDate && { $lte: new Date(query.toDate) }),
-      };
-    }
+    const dateRange = buildUtcDateRange(query.fromDate, query.toDate);
+    if (dateRange) filter.date = dateRange;
 
     const [payments, total] = await Promise.all([
       Payment.find(filter)
@@ -77,6 +84,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = requireApiAuth(req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
 
     const body: Partial<CreatePaymentDTO> = await req.json();
@@ -91,16 +101,96 @@ export async function POST(req: NextRequest) {
       return validationErrorResponse({ partyId: "Party not found" });
     }
 
-    const payment = await Payment.create({
+    const amountCents = toMoneyCents(Number(body.amount));
+    const basePaymentData = {
       partyId: body.partyId,
-      amount: mongoose.Types.Decimal128.fromString(String(body.amount)),
+      amount: mongoose.Types.Decimal128.fromString(centsToMoneyString(amountCents)),
       method: body.method ?? "cash",
       date: body.date ? new Date(body.date) : new Date(),
       referenceNumber: body.referenceNumber?.trim(),
       notes: body.notes?.trim(),
-    });
+    };
 
-    const populated = await Payment.findById(payment._id)
+    let paymentId: mongoose.Types.ObjectId | undefined;
+
+    if (body.transactionId) {
+      const Transaction = (await import("@/models/transaction.model")).default;
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const transaction = await Transaction.findById(body.transactionId, null, {
+            session,
+          });
+          if (!transaction) {
+            throw routeValidationFailure({ transactionId: "Transaction not found" });
+          }
+          if (transaction.partyId.toString() !== String(body.partyId)) {
+            throw routeValidationFailure({
+              transactionId: "Transaction does not belong to selected party",
+            });
+          }
+
+          const direction =
+            body.direction ?? (transaction.type === "purchase" ? "payout" : "payin");
+          const expectedDirection =
+            transaction.type === "purchase" ? "payout" : "payin";
+          if (direction !== expectedDirection) {
+            throw routeValidationFailure({
+              direction:
+                expectedDirection === "payout"
+                  ? "Purchase settlement requires payout"
+                  : "Sale settlement requires pay in",
+            });
+          }
+
+          const txnTotal = parseFloat(transaction.totalAmount.toString());
+          const txnPaid = parseFloat(transaction.paidAmount.toString());
+          const txnTotalCents = toMoneyCents(txnTotal);
+          const txnPaidCents = toMoneyCents(txnPaid);
+          const nextPaidCents = txnPaidCents + amountCents;
+          if (nextPaidCents > txnTotalCents) {
+            throw routeValidationFailure({
+              amount: `Amount exceeds transaction due. Remaining due: ${centsToMoneyString(
+                txnTotalCents - txnPaidCents
+              )}`,
+            });
+          }
+
+          transaction.paidAmount = mongoose.Types.Decimal128.fromString(
+            centsToMoneyString(nextPaidCents)
+          );
+          await transaction.save({ validateBeforeSave: false, session });
+
+          const payment = new Payment({
+            ...basePaymentData,
+            transactionId: transaction._id,
+            direction,
+          });
+          await payment.save({ session });
+          paymentId = payment._id as mongoose.Types.ObjectId;
+        });
+      } catch (error) {
+        if (isRouteValidationFailure(error)) {
+          return validationErrorResponse(error.errors);
+        }
+        throw error;
+      } finally {
+        await session.endSession();
+      }
+    } else {
+      const payment = await Payment.create({
+        ...basePaymentData,
+        direction:
+          body.direction ?? (party.category === "supplier" ? "payout" : "payin"),
+      });
+      paymentId = payment._id as mongoose.Types.ObjectId;
+    }
+
+    if (!paymentId) {
+      throw new Error("Payment record not created");
+    }
+
+    const populated = await Payment.findById(paymentId)
       .populate("partyId", "name")
       .lean();
 

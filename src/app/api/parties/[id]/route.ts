@@ -6,10 +6,13 @@ import {
   notFoundResponse,
   handleApiError,
   validationErrorResponse,
+  badRequestResponse,
 } from "@/lib/apiResponse";
 import { validateUpdateParty } from "@/lib/validators";
-import { UpdatePartyDTO, PartyCategory, PartyResponseDTO } from "@/types/dto";
+import { UpdatePartyDTO, PartyResponseDTO } from "@/types/dto";
 import mongoose from "mongoose";
+import { toPartyDTO } from "@/lib/dto-mappers";
+import { requireApiAuth } from "@/lib/api-auth";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -17,23 +20,18 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: RouteContext) {
   try {
+    const auth = requireApiAuth(_req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
     const { id } = await params;
 
     const party = await Party.findById(id).lean();
     if (!party) return notFoundResponse("Party");
 
-    const data: PartyResponseDTO = {
-      _id: party._id.toString(),
-      name: party.name,
-      phone: party.phone ?? null,
-      address: party.address ?? null,
-      category: party.category as PartyCategory,
-      openingBalance: parseFloat(party.openingBalance?.toString() ?? "0"),
-      isActive: party.isActive,
-      createdAt: party.createdAt.toISOString(),
-      updatedAt: party.updatedAt.toISOString(),
-    };
+    const data: PartyResponseDTO = toPartyDTO(
+      party as unknown as Record<string, unknown>
+    );
 
     return successResponse(data, "Party fetched");
   } catch (err) {
@@ -45,6 +43,9 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 
 export async function PUT(req: NextRequest, { params }: RouteContext) {
   try {
+    const auth = requireApiAuth(req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
     const { id } = await params;
 
@@ -63,25 +64,63 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
       updateFields.openingBalance = body.openingBalance;
     if (body.isActive !== undefined) updateFields.isActive = body.isActive;
 
-    const party = await Party.findByIdAndUpdate(
-      id,
-      { $set: updateFields },
-      { new: true, runValidators: true }
-    ).lean();
+    let party: Record<string, unknown> | null = null;
+
+    if (body.openingBalance !== undefined) {
+      const Transaction = (await import("@/models/transaction.model")).default;
+      const Payment = (await import("@/models/payment.model")).default;
+      const session = await mongoose.startSession();
+
+      try {
+        await session.withTransaction(async () => {
+          const [txnCount, paymentCount] = await Promise.all([
+            Transaction.countDocuments(
+            { partyId: id },
+            { session }
+            ),
+            Payment.countDocuments(
+              { partyId: id },
+              { session }
+            ),
+          ]);
+          if (txnCount > 0 || paymentCount > 0) {
+            throw new Error(
+              "OPENING_BALANCE_LOCKED_AFTER_TRANSACTIONS"
+            );
+          }
+
+          party = (await Party.findByIdAndUpdate(
+            id,
+            { $set: updateFields },
+            { new: true, runValidators: true, session }
+          ).lean()) as Record<string, unknown> | null;
+        });
+      } catch (err) {
+        if (
+          err instanceof Error &&
+          err.message === "OPENING_BALANCE_LOCKED_AFTER_TRANSACTIONS"
+        ) {
+          return badRequestResponse(
+            "Opening balance cannot be modified after financial records exist. Record an adjustment transaction/payment instead."
+          );
+        }
+        throw err;
+      } finally {
+        await session.endSession();
+      }
+    } else {
+      party = (await Party.findByIdAndUpdate(
+        id,
+        { $set: updateFields },
+        { new: true, runValidators: true }
+      ).lean()) as Record<string, unknown> | null;
+    }
 
     if (!party) return notFoundResponse("Party");
 
-    const data: PartyResponseDTO = {
-      _id: party._id.toString(),
-      name: party.name,
-      phone: party.phone ?? null,
-      address: party.address ?? null,
-      category: party.category as PartyCategory,
-      openingBalance: parseFloat(party.openingBalance?.toString() ?? "0"),
-      isActive: party.isActive,
-      createdAt: party.createdAt.toISOString(),
-      updatedAt: party.updatedAt.toISOString(),
-    };
+    const data: PartyResponseDTO = toPartyDTO(
+      party as unknown as Record<string, unknown>
+    );
 
     return successResponse(data, "Party updated successfully");
   } catch (err) {
@@ -94,13 +133,21 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
 
 export async function DELETE(_req: NextRequest, { params }: RouteContext) {
   try {
+    const auth = requireApiAuth(_req);
+    if (auth instanceof Response) return auth;
+
     await dbConnect();
     const { id } = await params;
 
-    // Check for dependent transactions before deleting
-    const Transaction = mongoose.model("Transaction");
-    const txnCount = await Transaction.countDocuments({ partyId: id });
-    if (txnCount > 0) {
+    // Check for dependent financial records before deleting
+    const Transaction = (await import("@/models/transaction.model")).default;
+    const Payment = (await import("@/models/payment.model")).default;
+    const [txnCount, paymentCount] = await Promise.all([
+      Transaction.countDocuments({ partyId: id }),
+      Payment.countDocuments({ partyId: id }),
+    ]);
+
+    if (txnCount > 0 || paymentCount > 0) {
       // Soft delete only — cannot hard delete a party with history
       const party = await Party.findByIdAndUpdate(
         id,
@@ -108,7 +155,7 @@ export async function DELETE(_req: NextRequest, { params }: RouteContext) {
         { new: true }
       );
       if (!party) return notFoundResponse("Party");
-      return successResponse(null, "Party deactivated (has transaction history)");
+      return successResponse(null, "Party deactivated (has financial history)");
     }
 
     await Party.findByIdAndDelete(id);
