@@ -51,9 +51,26 @@ export async function GET(req: NextRequest) {
       Party.countDocuments(filter),
     ]);
 
-    const data: PartyResponseDTO[] = parties.map((p) =>
-      toPartyDTO(p as unknown as Record<string, unknown>)
+    // Fetch balances for each party gracefully
+    const partiesWithBalances = await Promise.all(
+      parties.map(async (p) => {
+        try {
+          const docId = (p as { _id: { toString(): string } })._id.toString();
+          const balanceRecord = await Party.getOutstandingBalance(docId);
+          const dto = toPartyDTO(p as unknown as Record<string, unknown>);
+          dto.balance = {
+            receivable: balanceRecord.receivable,
+            payable: balanceRecord.payable,
+            net: balanceRecord.net,
+          };
+          return dto;
+        } catch {
+          return toPartyDTO(p as unknown as Record<string, unknown>);
+        }
+      })
     );
+
+    const data: PartyResponseDTO[] = partiesWithBalances;
     console.log("Fetched parties:", data);
 
     return successResponse(data, "Parties fetched", 200, buildMeta(total, page, limit));

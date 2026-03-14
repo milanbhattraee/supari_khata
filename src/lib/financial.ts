@@ -47,16 +47,18 @@ export function calculatePartyOutstanding(
   const saleSide = openingCredit + totalSalesDue - totalPayIn;
   const purchaseSide = openingDebit + totalPurchasesDue - totalPayout;
 
-  const receivable = roundMoney(
-    Math.max(0, saleSide) + Math.max(0, -purchaseSide)
-  );
-  const payable = roundMoney(
-    Math.max(0, purchaseSide) + Math.max(0, -saleSide)
-  );
+  // Calculate the net relationship between the two sides.
+  // Positive net means the party owes you (Receivable).
+  // Negative net means you owe the party (Payable).
+  const netValue = saleSide - purchaseSide;
+  const net = roundMoney(netValue);
+
+  const receivable = net > 0 ? net : 0;
+  const payable = net < 0 ? Math.abs(net) : 0;
 
   return {
     receivable,
     payable,
-    net: roundMoney(receivable - payable),
+    net,
   };
 }

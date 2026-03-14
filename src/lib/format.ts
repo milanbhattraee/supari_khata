@@ -65,6 +65,22 @@ export function toNepaliDateLong(isoDate: string | Date | null | undefined): str
 /**
  * Get today's date in Nepali BS
  */
+/**
+ * Convert an ISO date string to short Nepali BS format (e.g., "Fal 24")
+ */
+export function toNepaliDateShort(isoDate: string | Date | null | undefined): string {
+  if (!isoDate) return "N/A";
+  try {
+    const date = new Date(isoDate);
+    if (isNaN(date.getTime())) return "Invalid Date";
+    const nepDate = new NepaliDate(date);
+    return nepDate.format("MMM DD");
+  } catch {
+    return "Invalid Date";
+  }
+}
+
+
 export function todayNepali(): string {
   const nepDate = new NepaliDate();
   return nepDate.format("YYYY/MM/DD");

@@ -112,11 +112,39 @@ export default function PartiesPage() {
                       )}
                     </div>
                   </div>
-                  <div className="text-right shrink-0 flex items-center gap-2">
-                    <div>
-                      <p className="text-[13px] font-semibold">
-                        {formatNepaliCurrency(party.openingBalance)}
-                      </p>
+                  <div className="text-right shrink-0 flex items-center gap-3">
+                    <div className="flex flex-col items-end justify-center">
+                      {(() => {
+                        const net = party.balance?.net ?? party.openingBalance;
+                        if (net > 0) {
+                          return (
+                            <>
+                              <span className="text-[10px] text-green-600 font-medium uppercase tracking-wider mb-0.5">To Receive</span>
+                              <p className="text-[14px] font-semibold text-green-600">
+                                {formatNepaliCurrency(net)}
+                              </p>
+                            </>
+                          );
+                        } else if (net < 0) {
+                          return (
+                            <>
+                              <span className="text-[10px] text-red-500 font-medium uppercase tracking-wider mb-0.5">To Pay</span>
+                              <p className="text-[14px] font-semibold text-red-500">
+                                {formatNepaliCurrency(Math.abs(net))}
+                              </p>
+                            </>
+                          );
+                        } else {
+                          return (
+                            <>
+                              <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wider mb-0.5">Settled</span>
+                              <p className="text-[13px] font-medium text-gray-500">
+                                Rs. 0.00
+                              </p>
+                            </>
+                          );
+                        }
+                      })()}
                     </div>
                     <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
                   </div>

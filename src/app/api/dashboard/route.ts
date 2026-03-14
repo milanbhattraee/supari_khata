@@ -9,6 +9,7 @@ import { DashboardSummaryDTO } from "@/types/dto";
 import mongoose from "mongoose";
 import { calculatePartyOutstanding, roundMoney } from "@/lib/financial";
 import { requireApiAuth } from "@/lib/api-auth";
+import NepaliDate from "nepali-date-converter";
 
 // ── GET /api/dashboard ────────────────────────────────────────
 // Returns a high-level business snapshot for the home screen
@@ -41,23 +42,29 @@ export async function GET(_req: NextRequest) {
 
     const activePartyIds = activeParties.map((p) => p._id);
 
+    // Calculate start of the year for Yearly Activity
+    const startOfYear = new Date(nowNepal.getFullYear(), 0, 1);
+    startOfYear.setUTCHours(0, 0, 0, 0);
+
     // Run all remaining queries in parallel
     const [
       totalProducts,
-      todayTransactions,
+      yearlyTransactions,
       stockSummary,
       txnOutstandingByParty,
       paymentOutstandingByParty,
+      cashflowTxns,
+      cashflowPayments,
     ] = await Promise.all([
       // Count active products
       Product.countDocuments({ isActive: true }),
 
-      // Today's transactions — scoped to active parties, Nepal date window
+      // Yearly transactions — scoped to active parties
       Transaction.aggregate([
         {
           $match: {
             partyId: { $in: activePartyIds },
-            date: { $gte: startOfDay, $lte: endOfDay },
+            date: { $gte: startOfYear },
           },
         },
         {
@@ -107,11 +114,57 @@ export async function GET(_req: NextRequest) {
           },
         },
       ]),
+
+      // Cashflow: Transactions last 180 days
+      Transaction.aggregate([
+        {
+          $match: {
+            date: { $gte: new Date(startOfDay.getTime() - 179 * 24 * 60 * 60 * 1000), $lte: endOfDay },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              dateStr: {
+                $dateToString: {
+                  format: "%Y-%m-%d",
+                  date: { $add: ["$date", NEPAL_OFFSET_MS] },
+                },
+              },
+              type: "$type",
+            },
+            totalPaid: { $sum: { $toDouble: "$paidAmount" } },
+          },
+        },
+      ]),
+
+      // Cashflow: Payments last 180 days
+      Payment.aggregate([
+        {
+          $match: {
+            date: { $gte: new Date(startOfDay.getTime() - 179 * 24 * 60 * 60 * 1000), $lte: endOfDay },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              dateStr: {
+                $dateToString: {
+                  format: "%Y-%m-%d",
+                  date: { $add: ["$date", NEPAL_OFFSET_MS] },
+                },
+              },
+              direction: "$direction",
+            },
+            totalAmount: { $sum: { $toDouble: "$amount" } },
+          },
+        },
+      ]),
     ]);
 
-    // ── Today's stats
-    const purchaseStats = todayTransactions.find((t) => t._id === "purchase");
-    const saleStats     = todayTransactions.find((t) => t._id === "sale");
+    // ── Yearly stats
+    const purchaseStats = yearlyTransactions.find((t) => t._id === "purchase");
+    const saleStats     = yearlyTransactions.find((t) => t._id === "sale");
 
     // Index outstanding figures per party to avoid cross-party offsetting.
     const txnByPartyMap = txnOutstandingByParty.reduce(
@@ -169,13 +222,90 @@ export async function GET(_req: NextRequest) {
       { receivable: 0, payable: 0 }
     );
 
+    // Build cashflow daily array (last 7 days) and monthly array (last 6 months)
+    const dailyCashflow = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(startOfDay.getTime() - i * 24 * 60 * 60 * 1000);
+      const tzDate = new Date(d.getTime() + NEPAL_OFFSET_MS);
+      const dateStr = tzDate.toISOString().split("T")[0]; // YYYY-MM-DD
+      
+      let moneyIn = 0;
+      let moneyOut = 0;
+
+      // Add from transactions
+      for (const t of cashflowTxns) {
+        if (t._id.dateStr === dateStr) {
+          if (t._id.type === "sale") moneyIn += t.totalPaid;
+          if (t._id.type === "purchase") moneyOut += t.totalPaid;
+        }
+      }
+
+      // Add from payments
+      for (const p of cashflowPayments) {
+        if (p._id.dateStr === dateStr) {
+          if (p._id.direction === "payin") moneyIn += p.totalAmount;
+          if (p._id.direction === "payout") moneyOut += p.totalAmount;
+        }
+      }
+
+      dailyCashflow.push({
+        date: dateStr,
+        moneyIn,
+        moneyOut,
+      });
+    }
+
+    // Process last 6 months
+    const monthlyCashflowMap = new Map<string, { moneyIn: number; moneyOut: number }>();
+    const monthKeys = [];
+    
+    // Get keys for last 6 months
+    let currentND = new NepaliDate();
+    for(let i = 5; i >= 0; i--) {
+      // safe subtraction
+      let m = currentND.getMonth() - i;
+      let y = currentND.getYear();
+      if(m < 0) {
+        m += 12;
+        y -= 1;
+      }
+      const key = `${y}-${String(m + 1).padStart(2, '0')}`;
+      monthKeys.push(key);
+      monthlyCashflowMap.set(key, { moneyIn: 0, moneyOut: 0 });
+    }
+
+    // Aggregate into the map
+    const processItem = (dateStr: string, isMoneyIn: boolean, amount: number) => {
+      try {
+        const nd = new NepaliDate(new Date(dateStr));
+        const key = `${nd.getYear()}-${String(nd.getMonth() + 1).padStart(2, '0')}`;
+        if (monthlyCashflowMap.has(key)) {
+          const entry = monthlyCashflowMap.get(key)!;
+          if (isMoneyIn) entry.moneyIn += amount;
+          else entry.moneyOut += amount;
+        }
+      } catch (e) {}
+    };
+
+    for (const t of cashflowTxns) {
+      processItem(t._id.dateStr, t._id.type === "sale", t.totalPaid);
+    }
+    for (const p of cashflowPayments) {
+      processItem(p._id.dateStr, p._id.direction === "payin", p.totalAmount);
+    }
+
+    const monthlyCashflow = monthKeys.map(key => ({
+      date: key,
+      ...monthlyCashflowMap.get(key)!
+    }));
+
     const data: DashboardSummaryDTO = {
       totalParties: activeParties.length, // reuse from the query already done above
       totalProducts,
-      totalTransactionsToday:
-        (purchaseStats?.count ?? 0) + (saleStats?.count ?? 0),
-      totalPurchasesToday: purchaseStats?.totalAmount ?? 0,
-      totalSalesToday:     saleStats?.totalAmount     ?? 0,
+        totalTransactionsYearly:
+          (purchaseStats?.count ?? 0) + (saleStats?.count ?? 0),
+        totalPurchasesYearly: purchaseStats?.totalAmount ?? 0,
+        totalSalesYearly:     saleStats?.totalAmount     ?? 0,
       totalOutstandingReceivable: roundMoney(receivable),
       totalOutstandingPayable: roundMoney(payable),
       lowStockProducts: stockSummary.map((p) => ({
@@ -190,6 +320,10 @@ export async function GET(_req: NextRequest) {
         createdAt: (p.createdAt as Date).toISOString(),
         updatedAt: (p.updatedAt as Date).toISOString(),
       })),
+      cashflow: {
+        daily: dailyCashflow,
+        monthly: monthlyCashflow,
+      },
     };
 
     console.log("Dashboard summary data:", data);

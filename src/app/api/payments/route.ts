@@ -147,27 +147,62 @@ export async function POST(req: NextRequest) {
           const txnPaid = parseFloat(transaction.paidAmount.toString());
           const txnTotalCents = toMoneyCents(txnTotal);
           const txnPaidCents = toMoneyCents(txnPaid);
-          const nextPaidCents = txnPaidCents + amountCents;
-          if (nextPaidCents > txnTotalCents) {
+          const remainingCents = txnTotalCents - txnPaidCents;
+
+          if (remainingCents <= 0) {
             throw routeValidationFailure({
-              amount: `Amount exceeds transaction due. Remaining due: ${centsToMoneyString(
-                txnTotalCents - txnPaidCents
-              )}`,
+              amount: "Transaction is already fully settled. Record a standalone payment instead.",
             });
           }
 
-          transaction.paidAmount = mongoose.Types.Decimal128.fromString(
-            centsToMoneyString(nextPaidCents)
-          );
-          await transaction.save({ validateBeforeSave: false, session });
+          if (amountCents > remainingCents) {
+            // -- SPLIT OVERPAYMENT LOGIC --
+            // 1. Fully settle this transaction
+            transaction.paidAmount = mongoose.Types.Decimal128.fromString(
+              centsToMoneyString(txnTotalCents)
+            );
+            await transaction.save({ validateBeforeSave: false, session });
 
-          const payment = new Payment({
-            ...basePaymentData,
-            transactionId: transaction._id,
-            direction,
-          });
-          await payment.save({ session });
-          paymentId = payment._id as mongoose.Types.ObjectId;
+            // 2. Save the linked payment for the exact remaining amount
+            const linkedPayment = new Payment({
+              ...basePaymentData,
+              amount: mongoose.Types.Decimal128.fromString(
+                centsToMoneyString(remainingCents)
+              ),
+              transactionId: transaction._id,
+              direction,
+            });
+            await linkedPayment.save({ session });
+
+            // 3. Save the excess as an Advance (Standalone Payment)
+            const excessCents = amountCents - remainingCents;
+            const standalonePayment = new Payment({
+              ...basePaymentData,
+              amount: mongoose.Types.Decimal128.fromString(
+                centsToMoneyString(excessCents)
+              ),
+              direction,
+              notes: `${basePaymentData.notes || ""} (Overpayment from Txn ${transaction._id.toString().slice(-6)})`.trim(),
+            });
+            await standalonePayment.save({ session });
+
+            paymentId = standalonePayment._id as mongoose.Types.ObjectId;
+          } else {
+            // -- NORMAL EXACT OR PARTIAL PAYMENT --
+            const nextPaidCents = txnPaidCents + amountCents;
+            transaction.paidAmount = mongoose.Types.Decimal128.fromString(
+              centsToMoneyString(nextPaidCents)
+            );
+            await transaction.save({ validateBeforeSave: false, session });
+
+            const payment = new Payment({
+              ...basePaymentData,
+              transactionId: transaction._id,
+              direction,
+            });
+            await payment.save({ session });
+            paymentId = payment._id as mongoose.Types.ObjectId;
+          }
         });
       } catch (error) {
         if (isRouteValidationFailure(error)) {

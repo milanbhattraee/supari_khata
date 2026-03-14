@@ -181,25 +181,25 @@ export function NepaliDatePicker({
 
       {/* Calendar dropdown */}
       {open && (
-        <div className="absolute top-full left-0 right-0 z-50 mt-1 glass-card rounded-2xl p-3 shadow-2xl border border-white/20">
+        <div className="absolute top-full left-0 z-50 mt-1 w-[260px] bg-background/95 backdrop-blur-3xl rounded-2xl p-3 shadow-2xl border border-border">
           {/* Month / Year navigation */}
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-2">
             <button
               type="button"
               onClick={prevMonth}
-              className="p-1.5 rounded-lg hover:bg-black/5 active:scale-95 transition-all"
+              className="p-1 rounded-lg hover:bg-black/5 active:scale-95 transition-all"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
 
-            <div className="text-sm font-semibold">
+            <div className="text-[13px] font-semibold">
               {BS_MONTHS[viewMonth]} {viewYear}
             </div>
 
             <button
               type="button"
               onClick={nextMonth}
-              className="p-1.5 rounded-lg hover:bg-black/5 active:scale-95 transition-all"
+              className="p-1 rounded-lg hover:bg-black/5 active:scale-95 transition-all"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -218,7 +218,7 @@ export function NepaliDatePicker({
           </div>
 
           {/* Day grid */}
-          <div className="grid grid-cols-7 gap-0.5">
+          <div className="grid grid-cols-7 gap-y-1">
             {Array.from({ length: totalCells }, (_, i) => {
               const day = i - firstDayOfWeek + 1;
               const valid = day >= 1 && day <= daysInMonth;
@@ -243,7 +243,7 @@ export function NepaliDatePicker({
                   disabled={!valid}
                   onClick={() => valid && selectDay(day)}
                   className={cn(
-                    "aspect-square flex items-center justify-center text-xs rounded-xl transition-all",
+                    "h-8 w-8 mx-auto flex items-center justify-center text-[12px] rounded-xl transition-all",
                     !valid && "invisible pointer-events-none",
                     isSelected && "bg-blue-500 text-white font-semibold",
                     isToday &&
@@ -262,18 +262,18 @@ export function NepaliDatePicker({
           </div>
 
           {/* Footer — Clear / Today */}
-          <div className="flex justify-between mt-2 pt-2 border-t border-black/5">
+          <div className="flex justify-between mt-2 pt-2 border-t border-black/5 dark:border-white/5">
             <button
               type="button"
               onClick={clear}
-              className="text-sm text-muted-foreground px-2 py-1 rounded-lg hover:bg-black/5 transition-colors"
+              className="text-xs text-muted-foreground px-2 py-1 rounded-lg hover:bg-black/5 transition-colors"
             >
               Clear
             </button>
             <button
               type="button"
               onClick={selectToday}
-              className="text-sm text-blue-500 font-semibold px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors"
+              className="text-xs text-blue-500 font-semibold px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
             >
               Today
             </button>

@@ -73,6 +73,11 @@ export interface PartyResponseDTO {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  balance?: {
+    receivable: number;
+    payable: number;
+    net: number;
+  };
 }
 
 /** GET /api/parties/:id/balance — response data */
@@ -270,10 +275,14 @@ export interface ProductionEntryResponseDTO {
 export interface DashboardSummaryDTO {
   totalParties: number;
   totalProducts: number;
-  totalTransactionsToday: number;
-  totalPurchasesToday: number;
-  totalSalesToday: number;
+  totalTransactionsYearly: number;
+  totalPurchasesYearly: number;
+  totalSalesYearly: number;
   totalOutstandingReceivable: number;  // money customers owe you
   totalOutstandingPayable: number;     // money you owe suppliers
   lowStockProducts: ProductResponseDTO[];
+  cashflow: {
+    daily: { date: string; moneyIn: number; moneyOut: number }[];
+    monthly: { date: string; moneyIn: number; moneyOut: number }[];
+  };
 }

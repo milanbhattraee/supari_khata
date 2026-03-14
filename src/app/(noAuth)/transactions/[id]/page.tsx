@@ -1,13 +1,11 @@
 "use client";
 
 import { use } from "react";
-import Link from "next/link";
 import {
   ArrowUpRight,
   ArrowDownLeft,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
 import { DetailSkeleton } from "@/components/skeletons";
 import { ErrorState } from "@/components/empty-state";
@@ -33,13 +31,9 @@ export default function TransactionDetailPage({
   if (!txn) return null;
 
   const isPurchase = txn.type === "purchase";
-  const paymentDirection = isPurchase ? "payout" : "payin";
-  const paymentLabel = isPurchase ? "Payout (This Transaction)" : "Pay In (This Transaction)";
 
-  // Use live party balance for button condition – this reflects payments already made
-  const transactionDue = Math.max(0, txn.balanceAmount);
+  // Use live party balance
   const outstandingAmount = partyBalance ? Math.abs(partyBalance.outstandingBalance) : 0;
-  const showPaymentButton = transactionDue > 0;
 
   return (
     <>
@@ -77,17 +71,6 @@ export default function TransactionDetailPage({
           <p className="text-[13px] text-muted-foreground">
             {toNepaliDate(txn.date)}
           </p>
-
-          {showPaymentButton ? (
-            <Link
-              href={`/payments/create?partyId=${txn.party._id}&amount=${transactionDue}&direction=${paymentDirection}&transactionId=${txn._id}`}
-              className="block pt-2"
-            >
-              <Button className="w-full rounded-xl">
-                {paymentLabel} · {formatNepaliCurrency(transactionDue)}
-              </Button>
-            </Link>
-          ) : null}
         </div>
 
         {/* Details Card */}

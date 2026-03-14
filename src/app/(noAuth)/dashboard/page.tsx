@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/page-header";
 import { ListSkeleton } from "@/components/skeletons";
 import { ErrorState } from "@/components/empty-state";
 import { useDashboard } from "@/app/features/dashboard/hooks/useDashboard";
+import { CashflowChart } from "@/components/cashflow-chart";
 import { formatNepaliCurrency, formatNumber, todayNepali } from "@/lib/format";
 
 export default function DashboardPage() {
@@ -31,7 +32,7 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader
-        title="सुपारी खाता"
+        title="Jay Durga Suparai Prachodan Kendra"
         subtitle={todayNepali()}
       />
 
@@ -59,23 +60,23 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        {/* Today's Activity — grouped card */}
-        <div className="glass-card rounded-2xl overflow-hidden">
-          <div className="flex items-center gap-2 px-4 pt-4 pb-3">
-            <TrendingUp className="h-4 w-4 text-primary" />
-            <h3 className="text-[13px] font-semibold">Today&apos;s Activity</h3>
-          </div>
-          <div className="grid grid-cols-3 gap-px bg-border/30">
-            <div className="bg-background/40 p-3.5 text-center">
-              <p className="text-xl font-bold">{data.totalTransactionsToday}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Total</p>
+{/* Yearly Activity — grouped card */}
+          <div className="glass-card rounded-2xl overflow-hidden">
+            <div className="flex items-center gap-2 px-4 pt-4 pb-3">
+              <TrendingUp className="h-4 w-4 text-primary" />
+              <h3 className="text-[13px] font-semibold">Yearly Activity</h3>
             </div>
-            <div className="bg-background/40 p-3.5 text-center">
-              <p className="text-xl font-bold text-red-500">{data.totalPurchasesToday}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Purchases</p>
-            </div>
-            <div className="bg-background/40 p-3.5 text-center">
-              <p className="text-xl font-bold text-green-600">{data.totalSalesToday}</p>
+            <div className="grid grid-cols-3 gap-px bg-border/30">
+              <div className="bg-background/40 p-3.5 text-center">
+                <p className="text-xl font-bold">{data.totalTransactionsYearly}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Total</p>
+              </div>
+              <div className="bg-background/40 p-3.5 text-center">
+                <p className="text-xl font-bold text-red-500">{data.totalPurchasesYearly}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Purchases</p>
+              </div>
+              <div className="bg-background/40 p-3.5 text-center">
+                <p className="text-xl font-bold text-green-600">{data.totalSalesYearly}</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">Sales</p>
             </div>
           </div>
@@ -173,6 +174,9 @@ export default function DashboardPage() {
             </div>
           </Link>
         </div>
+
+        {/* Cashflow Chart */}
+        <CashflowChart data={data.cashflow} />
       </div>
     </>
   );
