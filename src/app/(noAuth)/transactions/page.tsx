@@ -17,6 +17,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/page-header";
 import { ListSkeleton } from "@/components/skeletons";
 import { EmptyState, ErrorState } from "@/components/empty-state";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { useTransactions } from "@/app/features/transactions/hooks/useTransactions";
 import { formatNepaliCurrency, toNepaliDate } from "@/lib/format";
 
@@ -33,8 +34,9 @@ function TransactionsContent() {
   const partyId = searchParams.get("partyId") ?? "";
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
-  const params: Record<string, string> = {};
+  const params: Record<string, string> = { page: String(page) };
   if (search) params.search = search;
   if (typeFilter !== "all") params.type = typeFilter;
   if (partyId) params.partyId = partyId;
@@ -61,12 +63,15 @@ function TransactionsContent() {
           <Input
             placeholder="Search transactions..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             className="pl-9 ios-input"
           />
         </div>
 
-        <Tabs value={typeFilter} onValueChange={setTypeFilter}>
+        <Tabs value={typeFilter} onValueChange={(val) => { setTypeFilter(val); setPage(1); }}>
           <TabsList className="w-full glass-card">
             <TabsTrigger value="all" className="flex-1">
               All
@@ -154,6 +159,12 @@ function TransactionsContent() {
               </Link>
             ))}
           </div>
+
+          <PaginationControls
+            currentPage={data.meta.page}
+            totalPages={data.meta.totalPages}
+            onPageChange={setPage}
+          />
         </div>
       )}
     </>

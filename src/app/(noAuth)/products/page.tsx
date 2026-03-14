@@ -8,13 +8,15 @@ import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/page-header";
 import { ListSkeleton } from "@/components/skeletons";
 import { EmptyState, ErrorState } from "@/components/empty-state";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { useProducts } from "@/app/features/products/hooks/useProducts";
 import { formatNumber } from "@/lib/format";
 
 export default function ProductsPage() {
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const { data, isLoading, error, refetch } = useProducts(
-    search ? { search } : undefined
+    search ? { search, page: String(page) } : { page: String(page) }
   );
 
   return (
@@ -37,7 +39,10 @@ export default function ProductsPage() {
           <Input
             placeholder="Search products..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             className="pl-9 ios-input"
           />
         </div>
@@ -100,6 +105,12 @@ export default function ProductsPage() {
               </Link>
             ))}
           </div>
+
+          <PaginationControls
+            currentPage={data.meta.page}
+            totalPages={data.meta.totalPages}
+            onPageChange={setPage}
+          />
         </div>
       )}
     </>

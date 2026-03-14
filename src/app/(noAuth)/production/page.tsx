@@ -1,16 +1,20 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { Plus, Factory, ArrowRight, ChevronRight } from "lucide-react";
+import { Plus, Factory, ArrowRight, ChevronRight, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/page-header";
 import { ListSkeleton } from "@/components/skeletons";
 import { EmptyState, ErrorState } from "@/components/empty-state";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { useProductionEntries } from "@/app/features/production/hooks/useProduction";
 import { formatNumber, toNepaliDate } from "@/lib/format";
 
 export default function ProductionPage() {
-  const { data, isLoading, error, refetch } = useProductionEntries();
+  const [page, setPage] = useState(1);
+  const { data, isLoading, error, refetch } = useProductionEntries({ page: String(page) });
 
   return (
     <>
@@ -79,6 +83,12 @@ export default function ProductionPage() {
               </Link>
             ))}
           </div>
+
+          <PaginationControls
+            currentPage={data.meta.page}
+            totalPages={data.meta.totalPages}
+            onPageChange={setPage}
+          />
         </div>
       )}
     </>

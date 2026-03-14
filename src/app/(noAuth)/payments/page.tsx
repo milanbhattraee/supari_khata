@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/page-header";
 import { ListSkeleton } from "@/components/skeletons";
 import { EmptyState, ErrorState } from "@/components/empty-state";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { usePayments } from "@/app/features/payments/hooks/usePayments";
 import { formatNepaliCurrency, toNepaliDate } from "@/lib/format";
 import { PAYMENT_DIRECTION_LABELS } from "@/lib/payment-utils";
@@ -33,8 +34,9 @@ function PaymentsContent() {
   const searchParams = useSearchParams();
   const partyId = searchParams.get("partyId") ?? "";
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
-  const params: Record<string, string> = {};
+  const params: Record<string, string> = { page: String(page) };
   if (search) params.search = search;
   if (partyId) params.partyId = partyId;
 
@@ -60,7 +62,10 @@ function PaymentsContent() {
           <Input
             placeholder="Search payments..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             className="pl-9 ios-input"
           />
         </div>
@@ -126,6 +131,12 @@ function PaymentsContent() {
               </Link>
             ))}
           </div>
+
+          <PaginationControls
+            currentPage={data.meta.page}
+            totalPages={data.meta.totalPages}
+            onPageChange={setPage}
+          />
         </div>
       )}
     </>

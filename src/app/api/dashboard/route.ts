@@ -42,9 +42,9 @@ export async function GET(_req: NextRequest) {
 
     const activePartyIds = activeParties.map((p) => p._id);
 
-    // Calculate start of the year for Yearly Activity
-    const startOfYear = new Date(nowNepal.getFullYear(), 0, 1);
-    startOfYear.setUTCHours(0, 0, 0, 0);
+    // Calculate start of the Nepali year for Yearly Activity (Baishakh 1st)
+    const currentNpDate = new NepaliDate();
+    const startOfYear = new NepaliDate(currentNpDate.getYear(), 0, 1).toJsDate();
 
     // Run all remaining queries in parallel
     const [
@@ -302,10 +302,10 @@ export async function GET(_req: NextRequest) {
     const data: DashboardSummaryDTO = {
       totalParties: activeParties.length, // reuse from the query already done above
       totalProducts,
-        totalTransactionsYearly:
-          (purchaseStats?.count ?? 0) + (saleStats?.count ?? 0),
-        totalPurchasesYearly: purchaseStats?.totalAmount ?? 0,
-        totalSalesYearly:     saleStats?.totalAmount     ?? 0,
+      totalTransactionsYearly:
+        (purchaseStats?.totalAmount ?? 0) + (saleStats?.totalAmount ?? 0),
+      totalPurchasesYearly: purchaseStats?.totalAmount ?? 0,
+      totalSalesYearly:     saleStats?.totalAmount     ?? 0,
       totalOutstandingReceivable: roundMoney(receivable),
       totalOutstandingPayable: roundMoney(payable),
       lowStockProducts: stockSummary.map((p) => ({

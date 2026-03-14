@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/page-header";
 import { ListSkeleton } from "@/components/skeletons";
 import { EmptyState, ErrorState } from "@/components/empty-state";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { useParties } from "@/app/features/parties/hooks/useParties";
 import { formatNepaliCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -21,8 +22,9 @@ const categoryColors: Record<string, string> = {
 
 export default function PartiesPage() {
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const { data, isLoading, error, refetch } = useParties(
-    search ? { search } : undefined
+    search ? { search, page: String(page) } : { page: String(page) }
   );
 
   return (
@@ -45,7 +47,10 @@ export default function PartiesPage() {
           <Input
             placeholder="Search parties..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             className="pl-9 ios-input"
           />
         </div>
@@ -152,6 +157,12 @@ export default function PartiesPage() {
               </Link>
             ))}
           </div>
+
+          <PaginationControls
+            currentPage={data.meta.page}
+            totalPages={data.meta.totalPages}
+            onPageChange={setPage}
+          />
         </div>
       )}
     </>

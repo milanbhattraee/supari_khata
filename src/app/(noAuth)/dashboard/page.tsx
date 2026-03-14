@@ -19,7 +19,7 @@ import { ListSkeleton } from "@/components/skeletons";
 import { ErrorState } from "@/components/empty-state";
 import { useDashboard } from "@/app/features/dashboard/hooks/useDashboard";
 import { CashflowChart } from "@/components/cashflow-chart";
-import { formatNepaliCurrency, formatNumber, todayNepali } from "@/lib/format";
+import { formatNepaliCurrency, formatCompactCurrency, formatNumber, todayNepali } from "@/lib/format";
 
 export default function DashboardPage() {
   const { data, isLoading, error, refetch } = useDashboard();
@@ -68,15 +68,15 @@ export default function DashboardPage() {
             </div>
             <div className="grid grid-cols-3 gap-px bg-border/30">
               <div className="bg-background/40 p-3.5 text-center">
-                <p className="text-xl font-bold">{data.totalTransactionsYearly}</p>
+                <p className="text-lg font-bold">{formatCompactCurrency(data.totalTransactionsYearly)}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">Total</p>
               </div>
               <div className="bg-background/40 p-3.5 text-center">
-                <p className="text-xl font-bold text-red-500">{data.totalPurchasesYearly}</p>
+                <p className="text-lg font-bold text-red-500">{formatCompactCurrency(data.totalPurchasesYearly)}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">Purchases</p>
               </div>
               <div className="bg-background/40 p-3.5 text-center">
-                <p className="text-xl font-bold text-green-600">{data.totalSalesYearly}</p>
+                <p className="text-lg font-bold text-green-600">{formatCompactCurrency(data.totalSalesYearly)}</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">Sales</p>
             </div>
           </div>
