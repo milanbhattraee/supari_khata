@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
@@ -33,18 +34,30 @@ export default function CreateProductionPage() {
   const {
     register,
     handleSubmit,
-    setValue,
     control,
     watch,
     formState: { errors },
   } = useForm<CreateProductionFormValues>({
     resolver: standardSchemaResolver(createProductionSchema),
+    defaultValues: {
+      inputProductId: "",
+      outputProductId: "",
+    },
   });
 
   // eslint-disable-next-line react-hooks/incompatible-library
   const inputQty = watch("inputQuantity") || 0;
   const outputQty = watch("outputQuantity") || 0;
   const loss = Math.max(0, inputQty - outputQty);
+
+  // Create lookup maps for displaying names
+  const productMap = useMemo(() => {
+    const map = new Map<string, { name: string; stock: string }>();
+    productsData?.data.forEach((p) =>
+      map.set(p._id, { name: p.name, stock: `${formatNumber(p.currentStock, 1)} ${p.unit}` })
+    );
+    return map;
+  }, [productsData]);
 
   const onSubmit = (data: CreateProductionFormValues) => {
     createEntry.mutate(data, {
@@ -64,20 +77,32 @@ export default function CreateProductionPage() {
 
           <div className="space-y-2">
             <Label>Product *</Label>
-            <Select
-              onValueChange={(val: string | null) => val && setValue("inputProductId", val)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select input product" />
-              </SelectTrigger>
-              <SelectContent>
-                {productsData?.data.map((p) => (
-                  <SelectItem key={p._id} value={p._id}>
-                    {p.name} ({formatNumber(p.currentStock, 1)} {p.unit})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              name="inputProductId"
+              control={control}
+              render={({ field }) => {
+                const product = productMap.get(field.value);
+                return (
+                  <Select
+                    value={field.value}
+                    onValueChange={(val: string | null) => field.onChange(val ?? "")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select input product">
+                        {product ? `${product.name} (${product.stock})` : "Select input product"}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {productsData?.data.map((p) => (
+                        <SelectItem key={p._id} value={p._id}>
+                          {p.name} ({formatNumber(p.currentStock, 1)} {p.unit})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                );
+              }}
+            />
             {errors.inputProductId && (
               <p className="text-xs text-destructive">
                 {errors.inputProductId.message}
@@ -109,20 +134,32 @@ export default function CreateProductionPage() {
 
           <div className="space-y-2">
             <Label>Product *</Label>
-            <Select
-              onValueChange={(val: string | null) => val && setValue("outputProductId", val)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select output product" />
-              </SelectTrigger>
-              <SelectContent>
-                {productsData?.data.map((p) => (
-                  <SelectItem key={p._id} value={p._id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              name="outputProductId"
+              control={control}
+              render={({ field }) => {
+                const product = productMap.get(field.value);
+                return (
+                  <Select
+                    value={field.value}
+                    onValueChange={(val: string | null) => field.onChange(val ?? "")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select output product">
+                        {product ? product.name : "Select output product"}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {productsData?.data.map((p) => (
+                        <SelectItem key={p._id} value={p._id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                );
+              }}
+            />
             {errors.outputProductId && (
               <p className="text-xs text-destructive">
                 {errors.outputProductId.message}

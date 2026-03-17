@@ -223,6 +223,7 @@ export interface PaymentResponseDTO {
 
 export interface PaymentQueryDTO extends PaginationQuery {
   partyId?: string;
+  direction?: "payin" | "payout";
   method?: PaymentMethod;
   fromDate?: string;
   toDate?: string;
@@ -275,11 +276,31 @@ export interface ProductionEntryResponseDTO {
 export interface DashboardSummaryDTO {
   totalParties: number;
   totalProducts: number;
+
+  // ── Yearly Activity (business value = totalAmount) ──────────────────────
   totalTransactionsYearly: number;
-  totalPurchasesYearly: number;
-  totalSalesYearly: number;
-  totalOutstandingReceivable: number;  // money customers owe you
-  totalOutstandingPayable: number;     // money you owe suppliers
+  totalPurchasesYearly: number;           // SUM(purchase txn.totalAmount) this year
+  totalSalesYearly: number;               // SUM(sale txn.totalAmount) this year
+  grossProfitYearly: number;              // Sales - Purchases (business margin)
+
+  // ── Yearly Cash Position (actual money movement) ────────────────────────
+  // Money In  = sale txn.paidAmount + standalone payin payments (this year)
+  // Money Out = purchase txn.paidAmount + standalone payout payments (this year)
+  totalMoneyInYearly: number;
+  totalMoneyOutYearly: number;
+  netCashflowYearly: number;              // Money In - Money Out
+
+  // ── Outstanding (All-Time - Sum of Party Ledgers) ─────────────────────────
+  // These values are calculated from party ledgers, NOT yearly subtraction.
+  // Formula: SUM of (openingBalance + transactionDues - standalonePayments) per party.
+  // This ensures dashboard always matches party pages exactly.
+  totalOutstandingReceivable: number;     // money customers owe you (sum of all party receivables)
+  totalOutstandingPayable: number;        // money you owe suppliers (sum of all party payables)
+
+  // ── Advances (when party payments exceed their dues) ──────────────────────
+  totalCustomerAdvance: number;           // customers paid more than owed (from party ledgers)
+  totalSupplierAdvance: number;           // you paid more than you owe (from party ledgers)
+
   lowStockProducts: ProductResponseDTO[];
   cashflow: {
     daily: { date: string; moneyIn: number; moneyOut: number }[];

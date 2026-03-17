@@ -1,18 +1,47 @@
+// ══════════════════════════════════════════════════════════════════════════════
+// Supari Khata — Financial Calculation Utilities
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// ACCOUNTING MODEL SUMMARY
+// ─────────────────────────
+// Transaction.totalAmount  = business value (P&L: what was bought/sold)
+// Transaction.paidAmount   = cash movement  (Cashflow: what was paid/received)
+// Transaction.balanceAmount= future dues    (Outstanding: what's still owed)
+//
+// Payment (standalone)     = cash movement not tied to a transaction
+// Payment (linked)         = settles a specific transaction (updates its paidAmount)
+//
+// CRITICAL RULE: Linked payments are ALREADY reflected in transaction.paidAmount.
+// They must NEVER be added again in cashflow or outstanding calculations.
+// Only STANDALONE payments (transactionId IS NULL) are counted separately.
+// ══════════════════════════════════════════════════════════════════════════════
+
 export interface PartyOutstandingInputs {
   openingBalance: number;
+  /** Sum of balanceAmount from all sale transactions for this party */
   totalSalesDue: number;
+  /** Sum of balanceAmount from all purchase transactions for this party */
   totalPurchasesDue: number;
+  /** Sum of standalone payment amounts where direction = "payin" */
   totalPayIn: number;
+  /** Sum of standalone payment amounts where direction = "payout" */
   totalPayout: number;
 }
 
 export interface PartyOutstandingResult {
+  /** What the party owes YOU (always >= 0) */
   receivable: number;
+  /** What YOU owe the party (always >= 0) */
   payable: number;
+  /** receivable - payable (positive = in your favour) */
   net: number;
+  /** Customer advance — customer paid more than owed on sale side (always >= 0) */
+  customerAdvance: number;
+  /** Supplier advance — you paid more than owed on purchase side (always >= 0) */
+  supplierAdvance: number;
 }
 
-function safeNumber(value: unknown): number {
+export function safeNumber(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
@@ -30,6 +59,25 @@ export function centsToMoneyString(cents: number): string {
   return (normalized / 100).toFixed(2);
 }
 
+/**
+ * Calculate a single party's outstanding receivable/payable.
+ *
+ * Formula:
+ *   saleSide     = max(openingBalance, 0) + totalSalesDue - totalPayIn
+ *   purchaseSide = abs(min(openingBalance, 0)) + totalPurchasesDue - totalPayout
+ *   net          = saleSide - purchaseSide
+ *
+ * If net > 0 → party owes you (receivable)
+ * If net < 0 → you owe party (payable)
+ *
+ * IMPORTANT: totalSalesDue and totalPurchasesDue should be the SUM of
+ * transaction.balanceAmount (NOT totalAmount). balanceAmount already
+ * accounts for any paidAmount at transaction time AND linked payments.
+ *
+ * totalPayIn and totalPayout should ONLY include STANDALONE payments
+ * (where transactionId is null). Linked payments are already reflected
+ * in the reduced balanceAmount of their transactions.
+ */
 export function calculatePartyOutstanding(
   input: PartyOutstandingInputs
 ): PartyOutstandingResult {
@@ -47,10 +95,19 @@ export function calculatePartyOutstanding(
   const saleSide = openingCredit + totalSalesDue - totalPayIn;
   const purchaseSide = openingDebit + totalPurchasesDue - totalPayout;
 
-  // Calculate the net relationship between the two sides.
+  // Track advances: when payments exceed what's owed on each side
+  // saleSide < 0 means customer paid more than they owe (customer advance)
+  // purchaseSide < 0 means you paid more than you owe (supplier advance)
+  const customerAdvance = saleSide < 0 ? roundMoney(Math.abs(saleSide)) : 0;
+  const supplierAdvance = purchaseSide < 0 ? roundMoney(Math.abs(purchaseSide)) : 0;
+
+  // For outstanding calculation, floor each side to 0 (advances don't offset the other side)
+  const effectiveSaleSide = Math.max(0, saleSide);
+  const effectivePurchaseSide = Math.max(0, purchaseSide);
+
   // Positive net means the party owes you (Receivable).
   // Negative net means you owe the party (Payable).
-  const netValue = saleSide - purchaseSide;
+  const netValue = effectiveSaleSide - effectivePurchaseSide;
   const net = roundMoney(netValue);
 
   const receivable = net > 0 ? net : 0;
@@ -60,5 +117,58 @@ export function calculatePartyOutstanding(
     receivable,
     payable,
     net,
+    customerAdvance,
+    supplierAdvance,
   };
+}
+
+// ── Cashflow helpers ─────────────────────────────────────────────────────────
+
+export interface DailyCashflowEntry {
+  date: string;
+  moneyIn: number;
+  moneyOut: number;
+  net: number;
+}
+
+/**
+ * Merge transaction paidAmounts and standalone payment amounts into a
+ * single daily cashflow array.
+ *
+ * CASHFLOW FORMULA (per day):
+ *   moneyIn  = SUM(sale txn.paidAmount)    + SUM(standalone payin payment.amount)
+ *   moneyOut = SUM(purchase txn.paidAmount) + SUM(standalone payout payment.amount)
+ *   net      = moneyIn - moneyOut
+ *
+ * CRITICAL: Only count STANDALONE payments. Linked payments are already
+ * reflected in transaction.paidAmount and would cause double-counting.
+ */
+export function buildDailyCashflow(
+  dateStrings: string[],
+  txnRows: Array<{ dateStr: string; type: string; totalPaid: number }>,
+  paymentRows: Array<{ dateStr: string; direction: string; totalAmount: number }>
+): DailyCashflowEntry[] {
+  return dateStrings.map((dateStr) => {
+    let moneyIn = 0;
+    let moneyOut = 0;
+
+    for (const t of txnRows) {
+      if (t.dateStr !== dateStr) continue;
+      if (t.type === "sale") moneyIn += t.totalPaid;
+      else if (t.type === "purchase") moneyOut += t.totalPaid;
+    }
+
+    for (const p of paymentRows) {
+      if (p.dateStr !== dateStr) continue;
+      if (p.direction === "payin") moneyIn += p.totalAmount;
+      else if (p.direction === "payout") moneyOut += p.totalAmount;
+    }
+
+    return {
+      date: dateStr,
+      moneyIn: roundMoney(moneyIn),
+      moneyOut: roundMoney(moneyOut),
+      net: roundMoney(moneyIn - moneyOut),
+    };
+  });
 }

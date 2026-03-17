@@ -84,35 +84,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const session = await mongoose.startSession();
-    let entryId: mongoose.Types.ObjectId | null = null;
+    const entry = await new ProductionEntry({
+      inputProductId: body.inputProductId,
+      inputQuantity: mongoose.Types.Decimal128.fromString(
+        String(body.inputQuantity)
+      ),
+      outputProductId: body.outputProductId,
+      outputQuantity: mongoose.Types.Decimal128.fromString(
+        String(body.outputQuantity)
+      ),
+      date: body.date ? new Date(body.date) : new Date(),
+      notes: body.notes?.trim(),
+    }).save();
 
-    try {
-      await session.withTransaction(async () => {
-        const entry = await new ProductionEntry({
-          inputProductId: body.inputProductId,
-          inputQuantity: mongoose.Types.Decimal128.fromString(
-            String(body.inputQuantity)
-          ),
-          outputProductId: body.outputProductId,
-          outputQuantity: mongoose.Types.Decimal128.fromString(
-            String(body.outputQuantity)
-          ),
-          date: body.date ? new Date(body.date) : new Date(),
-          notes: body.notes?.trim(),
-        }).save({ session }); // triggers pre-save stock adjustment in the same session
-
-        entryId = entry._id as mongoose.Types.ObjectId;
-      });
-    } finally {
-      await session.endSession();
-    }
-
-    if (!entryId) {
-      throw new Error("Production entry creation failed");
-    }
-
-    const populated = await ProductionEntry.findById(entryId)
+    const populated = await ProductionEntry.findById(entry._id)
       .populate("inputProductId", "name unit")
       .populate("outputProductId", "name unit")
       .lean();

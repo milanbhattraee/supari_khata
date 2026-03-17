@@ -152,20 +152,25 @@ function CreatePaymentContent() {
             <Controller
               name="partyId"
               control={control}
-              render={({ field }) => (
-                <Select value={field.value} onValueChange={(val: string | null) => field.onChange(val ?? "") }>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select party" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {partiesData?.data.map((p) => (
-                      <SelectItem key={p._id} value={p._id}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+              render={({ field }) => {
+                const selectedName = partiesData?.data.find((p) => p._id === field.value)?.name;
+                return (
+                  <Select value={field.value} onValueChange={(val: string | null) => field.onChange(val ?? "") }>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select party">
+                        {selectedName ?? "Select party"}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {partiesData?.data.map((p) => (
+                        <SelectItem key={p._id} value={p._id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                );
+              }}
             />
             {errors.partyId && (
               <p className="text-xs text-destructive">
@@ -229,27 +234,38 @@ function CreatePaymentContent() {
             <Controller
               name="method"
               control={control}
-              render={({ field }) => (
-                <Select
-                  value={field.value}
-                  onValueChange={(val) =>
-                    field.onChange(
-                      (val as "cash" | "bank_transfer" | "cheque" | "upi" | "other") ?? "cash"
-                    )
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                    <SelectItem value="cheque">Cheque</SelectItem>
-                    <SelectItem value="upi">UPI</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
+              render={({ field }) => {
+                const methodLabels: Record<string, string> = {
+                  cash: "Cash",
+                  bank_transfer: "Bank Transfer",
+                  cheque: "Cheque",
+                  upi: "UPI",
+                  other: "Other",
+                };
+                return (
+                  <Select
+                    value={field.value}
+                    onValueChange={(val) =>
+                      field.onChange(
+                        (val as "cash" | "bank_transfer" | "cheque" | "upi" | "other") ?? "cash"
+                      )
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue>
+                        {methodLabels[field.value ?? "cash"] ?? "Cash"}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                      <SelectItem value="cheque">Cheque</SelectItem>
+                      <SelectItem value="upi">UPI</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                );
+              }}
             />
           </div>
 

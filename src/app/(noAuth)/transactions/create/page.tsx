@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
@@ -51,7 +51,6 @@ function CreateTransactionContent() {
   const {
     register,
     handleSubmit,
-    setValue,
     control,
     watch,
     formState: { errors },
@@ -59,6 +58,7 @@ function CreateTransactionContent() {
     resolver: standardSchemaResolver(createTransactionSchema),
     defaultValues: {
       partyId: prefilledPartyId,
+      productId: "",
       type: initialType,
       paidAmount: 0,
     },
@@ -70,6 +70,21 @@ function CreateTransactionContent() {
   const totalAmount = quantity * rate;
   const paidAmount = watch("paidAmount") || 0;
   const balance = totalAmount - paidAmount;
+  const selectedPartyId = watch("partyId");
+  const selectedProductId = watch("productId");
+
+  // Create lookup maps for displaying names
+  const partyMap = useMemo(() => {
+    const map = new Map<string, string>();
+    partiesData?.data.forEach((p) => map.set(p._id, p.name));
+    return map;
+  }, [partiesData]);
+
+  const productMap = useMemo(() => {
+    const map = new Map<string, string>();
+    productsData?.data.forEach((p) => map.set(p._id, `${p.name} (${p.currentStock} ${p.unit})`));
+    return map;
+  }, [productsData]);
 
   const onSubmit = (data: CreateTransactionFormValues) => {
     createTxn.mutate(data, {
@@ -96,7 +111,9 @@ function CreateTransactionContent() {
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>
+                      {field.value === "purchase" ? "Purchase (Buying)" : "Sale (Selling)"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="purchase">Purchase (Buying)</SelectItem>
@@ -121,7 +138,9 @@ function CreateTransactionContent() {
                   onValueChange={(val: string | null) => field.onChange(val ?? "")}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select party" />
+                    <SelectValue placeholder="Select party">
+                      {field.value ? partyMap.get(field.value) ?? "Select party" : "Select party"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {partiesData?.data.map((p) => (
@@ -142,18 +161,29 @@ function CreateTransactionContent() {
 
           <div className="space-y-2">
             <Label>Product *</Label>
-            <Select onValueChange={(val: string | null) => val && setValue("productId", val)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select product" />
-              </SelectTrigger>
-              <SelectContent>
-                {productsData?.data.map((p) => (
-                  <SelectItem key={p._id} value={p._id}>
-                    {p.name} ({p.currentStock} {p.unit})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              name="productId"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onValueChange={(val: string | null) => field.onChange(val ?? "")}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select product">
+                      {field.value ? productMap.get(field.value) ?? "Select product" : "Select product"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {productsData?.data.map((p) => (
+                      <SelectItem key={p._id} value={p._id}>
+                        {p.name} ({p.currentStock} {p.unit})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
             {errors.productId && (
               <p className="text-xs text-destructive">
                 {errors.productId.message}

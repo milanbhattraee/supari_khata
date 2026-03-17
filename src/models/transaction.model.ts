@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
+import Product from "./product.model";
 
 export interface ITransaction extends Document {
   type: "purchase" | "sale";
@@ -112,11 +113,8 @@ const TransactionSchema: Schema = new Schema(
 TransactionSchema.pre("save", async function () {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const doc = this as any;
-  const Product = mongoose.model("Product");
 
   // ── 1. Always recalculate totalAmount and balanceAmount on every save.
-  // This also handles the case where a payment route updates paidAmount and
-  // calls txn.save() — balanceAmount will automatically stay in sync.
   const qty  = parseFloat(doc.quantity.toString());
   const rate = parseFloat(doc.ratePerKg.toString());
   const paid = parseFloat(doc.paidAmount.toString());
@@ -126,28 +124,18 @@ TransactionSchema.pre("save", async function () {
   doc.balanceAmount = mongoose.Types.Decimal128.fromString((total - paid).toFixed(2));
 
   // ── 2. Stock adjustment — only on NEW documents.
-  // If we updated stock on every save (including payment updates), we would
-  // add/deduct stock again every time balanceAmount is recalculated. The stock
-  // movement happened once, at the time of the original transaction.
   if (!this.isNew) return;
 
-  // Pass through the active session (if the caller used one) so this operation
-  // participates in the same atomic transaction and can be rolled back on failure.
-  const session = this.$session();
-  const findOptions = session ? { session } : {};
-
-  const product = await Product.findById(doc.productId, null, findOptions);
+  const product = await Product.findById(doc.productId);
   if (!product) throw new Error("Product not found");
 
   const currentStock = parseFloat(product.currentStock.toString());
 
   if (doc.type === "purchase") {
-    // Buying → stock increases
     product.currentStock = mongoose.Types.Decimal128.fromString(
       (currentStock + qty).toFixed(3)
     );
   } else if (doc.type === "sale") {
-    // Selling → stock decreases; guard against oversell
     if (currentStock < qty) {
       throw new Error(
         `Insufficient stock. Available: ${currentStock} kg, Requested: ${qty} kg`
@@ -158,8 +146,7 @@ TransactionSchema.pre("save", async function () {
     );
   }
 
-  // Save product within the same session so both writes succeed or both roll back
-  await product.save(session ? { session } : {});
+  await product.save();
 });
 
 const TransactionModel =

@@ -1,5 +1,7 @@
 import mongoose, { Document, Model, Schema } from "mongoose";
 import { calculatePartyOutstanding, roundMoney } from "@/lib/financial";
+import TransactionModel from "./transaction.model";
+import PaymentModel from "./payment.model";
 
 export interface IParty extends Document {
   name: string;
@@ -87,14 +89,11 @@ const PartySchema: Schema = new Schema(
 PartySchema.statics.getOutstandingBalance = async function (
   partyId: string
 ): Promise<IOutstandingBalance> {
-  const Transaction = mongoose.model("Transaction");
-  const Payment = mongoose.model("Payment");
-
   const party = await this.findById(partyId).lean();
   if (!party) throw new Error("Party not found");
 
   // Sum of all unpaid amounts from transactions — grouped by type
-  const txnResult = await Transaction.aggregate([
+  const txnResult = await TransactionModel.aggregate([
     { $match: { partyId: new mongoose.Types.ObjectId(partyId) } },
     {
       $group: {
@@ -105,7 +104,7 @@ PartySchema.statics.getOutstandingBalance = async function (
   ]);
 
   // Sum of all standalone payments (not linked to a transaction)
-  const paymentResult = await Payment.aggregate([
+  const paymentResult = await PaymentModel.aggregate([
     {
       $match: {
         partyId: new mongoose.Types.ObjectId(partyId),

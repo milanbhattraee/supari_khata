@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Factory,
   ChevronRight,
+  IndianRupee,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/page-header";
@@ -19,7 +20,7 @@ import { ListSkeleton } from "@/components/skeletons";
 import { ErrorState } from "@/components/empty-state";
 import { useDashboard } from "@/app/features/dashboard/hooks/useDashboard";
 import { CashflowChart } from "@/components/cashflow-chart";
-import { formatNepaliCurrency, formatCompactCurrency, formatNumber, todayNepali } from "@/lib/format";
+import { formatDashboardCurrency, formatNumber, todayNepali } from "@/lib/format";
 
 export default function DashboardPage() {
   const { data, isLoading, error, refetch } = useDashboard();
@@ -32,12 +33,12 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader
-        title="Jay Durga Suparai Prachodan Kendra"
+        title="Supari Khata"
         subtitle={todayNepali()}
       />
 
       <div className="space-y-4 p-4">
-        {/* Quick Stats — iOS widget grid */}
+        {/* Quick Stats */}
         <div className="grid grid-cols-2 gap-3">
           <Link href="/parties">
             <div className="glass-card rounded-2xl p-4">
@@ -60,54 +61,103 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-{/* Yearly Activity — grouped card */}
-          <div className="glass-card rounded-2xl overflow-hidden">
-            <div className="flex items-center gap-2 px-4 pt-4 pb-3">
-              <TrendingUp className="h-4 w-4 text-primary" />
-              <h3 className="text-[13px] font-semibold">Yearly Activity</h3>
+        {/* ── Section 1: Financial Summary (This Year) ────────────────────
+             P&L metrics - how much was bought/sold this year.
+             Uses totalAmount (full trade value). */}
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <div className="flex items-center gap-2 px-4 pt-4 pb-3">
+            <TrendingUp className="h-4 w-4 text-primary" />
+            <h3 className="text-[13px] font-semibold">Financial Summary <span className="font-normal text-muted-foreground">(This Year)</span></h3>
+          </div>
+
+          {/* Purchases & Sales */}
+          <div className="grid grid-cols-2 gap-px bg-border/30">
+            <div className="bg-background/40 p-3.5">
+              <p className="text-[10px] text-muted-foreground mb-1">Total Purchases</p>
+              <p className="text-[15px] font-bold text-red-500">{formatDashboardCurrency(data.totalPurchasesYearly)}</p>
             </div>
-            <div className="grid grid-cols-3 gap-px bg-border/30">
-              <div className="bg-background/40 p-3.5 text-center">
-                <p className="text-lg font-bold">{formatCompactCurrency(data.totalTransactionsYearly)}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Total</p>
+            <div className="bg-background/40 p-3.5">
+              <p className="text-[10px] text-muted-foreground mb-1">Total Sales</p>
+              <p className="text-[15px] font-bold text-green-600">{formatDashboardCurrency(data.totalSalesYearly)}</p>
+            </div>
+          </div>
+
+          {/* Profit/Loss */}
+          <div className="border-t border-border/30 bg-background/40 px-4 py-3 flex items-center justify-between">
+            <span className="text-[11px] text-muted-foreground">Gross Profit / Loss</span>
+            <span className={`text-[14px] font-bold ${data.grossProfitYearly >= 0 ? "text-green-600" : "text-red-500"}`}>
+              {formatDashboardCurrency(data.grossProfitYearly)}
+            </span>
+          </div>
+        </div>
+
+        {/* ── Section 2: Outstanding Balance (All-Time) ─────────────────
+             Sum of all party ledger balances - matches party pages exactly.
+             Uses: openingBalance + transactionDues - standalonePayments */}
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <div className="flex items-center gap-2 px-4 pt-4 pb-3">
+            <ArrowLeftRight className="h-4 w-4 text-primary" />
+            <h3 className="text-[13px] font-semibold">Outstanding Balance <span className="font-normal text-muted-foreground">(All Parties)</span></h3>
+          </div>
+
+          <div className="grid grid-cols-2 gap-px bg-border/30">
+            <div className="bg-background/40 p-3.5">
+              <div className="flex items-center gap-1 mb-1">
+                <ArrowDownLeft className="h-3 w-3 text-green-600" />
+                <p className="text-[10px] text-muted-foreground">To Receive</p>
               </div>
-              <div className="bg-background/40 p-3.5 text-center">
-                <p className="text-lg font-bold text-red-500">{formatCompactCurrency(data.totalPurchasesYearly)}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Purchases</p>
+              <p className="text-[15px] font-bold text-green-700 dark:text-green-400">{formatDashboardCurrency(data.totalOutstandingReceivable)}</p>
+              {data.totalCustomerAdvance > 0 && (
+                <p className="text-[9px] text-blue-500 mt-0.5">Customer Advance: {formatDashboardCurrency(data.totalCustomerAdvance)}</p>
+              )}
+            </div>
+            <div className="bg-background/40 p-3.5">
+              <div className="flex items-center gap-1 mb-1">
+                <ArrowUpRight className="h-3 w-3 text-red-500" />
+                <p className="text-[10px] text-muted-foreground">To Pay</p>
               </div>
-              <div className="bg-background/40 p-3.5 text-center">
-                <p className="text-lg font-bold text-green-600">{formatCompactCurrency(data.totalSalesYearly)}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Sales</p>
+              <p className="text-[15px] font-bold text-red-600 dark:text-red-400">{formatDashboardCurrency(data.totalOutstandingPayable)}</p>
+              {data.totalSupplierAdvance > 0 && (
+                <p className="text-[9px] text-blue-500 mt-0.5">Supplier Advance: {formatDashboardCurrency(data.totalSupplierAdvance)}</p>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Outstanding Balance */}
-        <div className="glass-card rounded-2xl p-4 space-y-3">
-          <h3 className="text-[13px] font-semibold">Outstanding Balance</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl bg-green-500/8 p-3.5 space-y-1.5">
-              <div className="flex items-center gap-1.5">
-                <ArrowDownLeft className="h-3.5 w-3.5 text-green-600" />
-                <span className="text-[11px] text-muted-foreground">To Receive</span>
-              </div>
-              <p className="text-[15px] font-bold text-green-700 dark:text-green-400">
-                {formatNepaliCurrency(data.totalOutstandingReceivable)}
-              </p>
+        {/* ── Section 2: Cash Position ────────────────────────────────────
+             Actual cash movement — money that physically came in/went out.
+             Uses paidAmount from transactions + standalone payments. */}
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <div className="flex items-center gap-2 px-4 pt-4 pb-3">
+            <IndianRupee className="h-4 w-4 text-primary" />
+            <h3 className="text-[13px] font-semibold">Cash Position <span className="font-normal text-muted-foreground">(This Year)</span></h3>
+          </div>
+
+          <div className="grid grid-cols-2 gap-px bg-border/30">
+            <div className="bg-background/40 p-3.5">
+              <p className="text-[10px] text-muted-foreground mb-1">Payments Received</p>
+              <p className="text-[15px] font-bold text-emerald-600">{formatDashboardCurrency(data.totalMoneyInYearly)}</p>
             </div>
-            <div className="rounded-xl bg-red-500/8 p-3.5 space-y-1.5">
-              <div className="flex items-center gap-1.5">
-                <ArrowUpRight className="h-3.5 w-3.5 text-red-500" />
-                <span className="text-[11px] text-muted-foreground">To Pay</span>
-              </div>
-              <p className="text-[15px] font-bold text-red-600 dark:text-red-400">
-                {formatNepaliCurrency(data.totalOutstandingPayable)}
-              </p>
+            <div className="bg-background/40 p-3.5">
+              <p className="text-[10px] text-muted-foreground mb-1">Payments Made</p>
+              <p className="text-[15px] font-bold text-red-500">{formatDashboardCurrency(data.totalMoneyOutYearly)}</p>
             </div>
+          </div>
+
+          <div className="border-t border-border/30 bg-background/40 px-4 py-3 flex items-center justify-between">
+            <span className="text-[11px] text-muted-foreground">Net Cash {data.netCashflowYearly >= 0 ? "Surplus" : "Deficit"}</span>
+            <span className={`text-[14px] font-bold ${data.netCashflowYearly >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+              {formatDashboardCurrency(data.netCashflowYearly)}
+            </span>
           </div>
         </div>
 
-        {/* Low Stock — iOS grouped list */}
+        {/* ── Section 3: Cashflow Trend ─────────────────────────────────────
+             Daily/monthly trend chart — shows the pattern of cash movement.
+             Cash Position above = yearly totals. This = daily/monthly breakdown. */}
+        <CashflowChart data={data.cashflow} />
+
+        {/* Low Stock Alert */}
         {data.lowStockProducts.length > 0 && (
           <div className="glass-card rounded-2xl overflow-hidden">
             <div className="flex items-center gap-2 px-4 pt-4 pb-2">
@@ -139,7 +189,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Quick Actions — iOS widget grid */}
+        {/* Quick Actions */}
         <div className="grid grid-cols-2 gap-3">
           <Link href="/transactions/create">
             <div className="glass-card rounded-2xl p-4 text-center">
@@ -174,9 +224,6 @@ export default function DashboardPage() {
             </div>
           </Link>
         </div>
-
-        {/* Cashflow Chart */}
-        <CashflowChart data={data.cashflow} />
       </div>
     </>
   );

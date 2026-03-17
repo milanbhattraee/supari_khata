@@ -79,7 +79,6 @@ export async function POST(req: NextRequest) {
     if (!validation.valid) return validationErrorResponse(validation.errors);
 
     // Validate paidAmount doesn't exceed total (pre-check before hitting DB)
-    // Full validation in pre-save, but this gives a cleaner error message
     if (body.paidAmount) {
       const estimatedTotalCents = toMoneyCents(body.quantity! * body.ratePerKg!);
       const paidAmountCents = toMoneyCents(body.paidAmount);
@@ -92,35 +91,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const session = await mongoose.startSession();
-    let transactionId: mongoose.Types.ObjectId | null = null;
+    const transaction = await new Transaction({
+      type: body.type,
+      partyId: body.partyId,
+      productId: body.productId,
+      quantity: mongoose.Types.Decimal128.fromString(String(body.quantity)),
+      ratePerKg: mongoose.Types.Decimal128.fromString(String(body.ratePerKg)),
+      paidAmount: mongoose.Types.Decimal128.fromString(
+        String(body.paidAmount ?? 0)
+      ),
+      date: body.date ? new Date(body.date) : new Date(),
+      notes: body.notes?.trim(),
+    }).save();
 
-    try {
-      await session.withTransaction(async () => {
-        const transaction = await new Transaction({
-          type: body.type,
-          partyId: body.partyId,
-          productId: body.productId,
-          quantity: mongoose.Types.Decimal128.fromString(String(body.quantity)),
-          ratePerKg: mongoose.Types.Decimal128.fromString(String(body.ratePerKg)),
-          paidAmount: mongoose.Types.Decimal128.fromString(
-            String(body.paidAmount ?? 0)
-          ),
-          date: body.date ? new Date(body.date) : new Date(),
-          notes: body.notes?.trim(),
-        }).save({ session }); // triggers pre-save middleware using the same session
-
-        transactionId = transaction._id as mongoose.Types.ObjectId;
-      });
-    } finally {
-      await session.endSession();
-    }
-
-    if (!transactionId) {
-      throw new Error("Transaction creation failed");
-    }
-
-    const populated = await Transaction.findById(transactionId)
+    const populated = await Transaction.findById(transaction._id)
       .populate("partyId", "name category")
       .populate("productId", "name unit")
       .lean();

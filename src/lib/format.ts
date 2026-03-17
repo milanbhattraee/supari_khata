@@ -19,6 +19,24 @@ export function formatNepaliCurrency(amount: number | string | null | undefined)
 }
 
 /**
+ * Format currency for dashboard display — full number with commas, no decimals.
+ * Example: 378300 → "Rs. 3,78,300"  (NOT "Rs. 3.78L" or "Rs. 378,300.00")
+ */
+export function formatDashboardCurrency(amount: number | string | null | undefined): string {
+  if (amount === null || amount === undefined) return "Rs. 0";
+  const numAmount = typeof amount === "string" ? parseFloat(amount) : amount;
+  if (isNaN(numAmount)) return "Rs. 0";
+
+  const formatted = new Intl.NumberFormat("en-NP", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Math.abs(numAmount));
+
+  const sign = numAmount < 0 ? "-" : "";
+  return `${sign}Rs. ${formatted}`;
+}
+
+/**
  * Format a number using compact notation (e.g. 1.2K, 15L)
  */
 export function formatCompactCurrency(amount: number | string | null | undefined): string {

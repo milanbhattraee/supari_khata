@@ -91,7 +91,13 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
     }
 
     if (body.notes !== undefined) transaction.notes = body.notes;
-    if (body.date !== undefined) transaction.date = new Date(body.date);
+    if (body.date !== undefined) {
+      const parsedDate = new Date(body.date);
+      if (isNaN(parsedDate.getTime())) {
+        return badRequestResponse("Invalid date format");
+      }
+      transaction.date = parsedDate;
+    }
 
     // Save lets model middleware keep total and balance math authoritative.
     await transaction.save({ validateBeforeSave: false });

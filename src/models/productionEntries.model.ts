@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
+import Product from "./product.model";
 
 export interface IProductionEntry extends Document {
   inputProductId: Types.ObjectId;
@@ -57,19 +58,13 @@ const ProductionEntrySchema: Schema = new Schema(
 // both product saves participate in the same atomic operation. If either throws,
 // the whole session can be aborted and no stock is permanently changed.
 ProductionEntrySchema.pre("save", async function () {
-  // Only adjust stock when creating a new entry, not on subsequent updates
   if (!this.isNew) return;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const doc = this as any;
-  const Product = mongoose.model("Product");
 
-  // Thread the caller's session through so saves are atomic
-  const session = this.$session();
-  const findOptions = session ? { session } : {};
-
-  const inputProduct  = await Product.findById(doc.inputProductId,  null, findOptions);
-  const outputProduct = await Product.findById(doc.outputProductId, null, findOptions);
+  const inputProduct  = await Product.findById(doc.inputProductId);
+  const outputProduct = await Product.findById(doc.outputProductId);
 
   if (!inputProduct || !outputProduct)
     throw new Error("Product(s) not found");
@@ -88,9 +83,8 @@ ProductionEntrySchema.pre("save", async function () {
     (parseFloat(outputProduct.currentStock.toString()) + outputQty).toFixed(3)
   );
 
-  // Both product saves share the session — either both commit or both roll back
-  await inputProduct.save(session  ? { session } : {});
-  await outputProduct.save(session ? { session } : {});
+  await inputProduct.save();
+  await outputProduct.save();
 });
 
 const ProductionEntryModel =

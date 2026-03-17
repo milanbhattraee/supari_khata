@@ -24,7 +24,7 @@ export default function LoginPage() {
 
   return (
     <FormDrawerPage
-      title="सुपारी खाता"
+      title="Supari Khata"
       subtitle="Sign in to your account"
       className="min-h-[58dvh]"
     >

@@ -10,7 +10,6 @@ import {
 } from "@/lib/apiResponse";
 import { validateUpdateParty } from "@/lib/validators";
 import { UpdatePartyDTO, PartyResponseDTO } from "@/types/dto";
-import mongoose from "mongoose";
 import { toPartyDTO } from "@/lib/dto-mappers";
 import { requireApiAuth } from "@/lib/api-auth";
 
@@ -69,45 +68,23 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
     if (body.openingBalance !== undefined) {
       const Transaction = (await import("@/models/transaction.model")).default;
       const Payment = (await import("@/models/payment.model")).default;
-      const session = await mongoose.startSession();
 
-      try {
-        await session.withTransaction(async () => {
-          const [txnCount, paymentCount] = await Promise.all([
-            Transaction.countDocuments(
-            { partyId: id },
-            { session }
-            ),
-            Payment.countDocuments(
-              { partyId: id },
-              { session }
-            ),
-          ]);
-          if (txnCount > 0 || paymentCount > 0) {
-            throw new Error(
-              "OPENING_BALANCE_LOCKED_AFTER_TRANSACTIONS"
-            );
-          }
+      const [txnCount, paymentCount] = await Promise.all([
+        Transaction.countDocuments({ partyId: id }),
+        Payment.countDocuments({ partyId: id }),
+      ]);
 
-          party = (await Party.findByIdAndUpdate(
-            id,
-            { $set: updateFields },
-            { new: true, runValidators: true, session }
-          ).lean()) as Record<string, unknown> | null;
-        });
-      } catch (err) {
-        if (
-          err instanceof Error &&
-          err.message === "OPENING_BALANCE_LOCKED_AFTER_TRANSACTIONS"
-        ) {
-          return badRequestResponse(
-            "Opening balance cannot be modified after financial records exist. Record an adjustment transaction/payment instead."
-          );
-        }
-        throw err;
-      } finally {
-        await session.endSession();
+      if (txnCount > 0 || paymentCount > 0) {
+        return badRequestResponse(
+          "Opening balance cannot be modified after financial records exist. Record an adjustment transaction/payment instead."
+        );
       }
+
+      party = (await Party.findByIdAndUpdate(
+        id,
+        { $set: updateFields },
+        { new: true, runValidators: true }
+      ).lean()) as Record<string, unknown> | null;
     } else {
       party = (await Party.findByIdAndUpdate(
         id,

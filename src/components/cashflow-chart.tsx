@@ -10,7 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { toNepaliDateShort, formatNepaliCurrency } from "@/lib/format";
+import { toNepaliDateShort, formatDashboardCurrency } from "@/lib/format";
 
 const MONTH_NAMES = [
   "Baisakh", "Jestha", "Ashadh", "Shrawan", "Bhadra", "Ashwin",
@@ -40,7 +40,7 @@ export function CashflowChart({ data }: CashflowChartProps) {
     
     if (viewType === "monthly") {
       return list.map((d) => {
-        const [y, m] = d.date.split("-");
+        const [, m] = d.date.split("-");
         const monthIndex = parseInt(m, 10) - 1;
         return {
           ...d,
@@ -55,20 +55,10 @@ export function CashflowChart({ data }: CashflowChartProps) {
     }));
   }, [data, viewType]);
 
-  const totalMoneyIn = useMemo(
-    () => chartData.reduce((acc, curr) => acc + curr.moneyIn, 0),
-    [chartData]
-  );
-
-  const totalMoneyOut = useMemo(
-    () => chartData.reduce((acc, curr) => acc + curr.moneyOut, 0),
-    [chartData]
-  );
-
   return (
     <div className="glass-card rounded-2xl p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-[15px] font-semibold">Cashflow <span className="font-normal text-muted-foreground">({viewType === "daily" ? "Last 7 Days" : "Last 6 Months"})</span></h3>
+        <h3 className="text-[15px] font-semibold">Cashflow Trend <span className="font-normal text-muted-foreground">({viewType === "daily" ? "Last 7 Days" : "Last 6 Months"})</span></h3>
         <select 
           className="text-xs bg-transparent border-0 outline-none text-muted-foreground focus:ring-0"
           value={viewType}
@@ -109,7 +99,7 @@ export function CashflowChart({ data }: CashflowChartProps) {
                             <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
                             <span className="text-[11px] text-muted-foreground">{entry.name === "moneyIn" ? "Money In" : "Money Out"}</span>
                           </div>
-                          <span className="text-[11px] font-semibold">{formatNepaliCurrency(entry.value as number)}</span>
+                          <span className="text-[11px] font-semibold">{formatDashboardCurrency(entry.value as number)}</span>
                         </div>
                       ))}
                     </div>
@@ -124,24 +114,14 @@ export function CashflowChart({ data }: CashflowChartProps) {
         </ResponsiveContainer>
       </div>
 
-      <div className="flex items-center justify-around pt-2">
-        <div className="text-center">
-          <div className="flex items-center justify-center gap-1.5 mb-1">
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-            <span className="text-xs text-muted-foreground">Total Money In</span>
-          </div>
-          <p className="text-sm font-bold text-emerald-600 dark:text-emerald-500">
-            {formatNepaliCurrency(totalMoneyIn)}
-          </p>
+      <div className="flex items-center justify-center gap-6 pt-1">
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+          <span className="text-xs text-muted-foreground">Money In</span>
         </div>
-        <div className="text-center">
-          <div className="flex items-center justify-center gap-1.5 mb-1">
-            <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
-            <span className="text-xs text-muted-foreground">Total Money Out</span>
-          </div>
-          <p className="text-sm font-bold text-red-600 dark:text-red-500">
-            {formatNepaliCurrency(totalMoneyOut)}
-          </p>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
+          <span className="text-xs text-muted-foreground">Money Out</span>
         </div>
       </div>
     </div>

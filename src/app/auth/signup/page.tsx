@@ -30,7 +30,7 @@ export default function SignupPage() {
 
   return (
     <FormDrawerPage
-      title="सुपारी खाता"
+      title="Supari Khata"
       subtitle="Create your account"
       className="min-h-[62dvh]"
     >

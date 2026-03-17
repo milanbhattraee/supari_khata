@@ -20,27 +20,8 @@ import { toPaymentDTO } from "@/lib/dto-mappers";
 import { requireApiAuth } from "@/lib/api-auth";
 import { buildUtcDateRange } from "@/lib/nepal-date-range";
 
-type RouteValidationFailure = {
-  type: "validation";
-  errors: Record<string, string>;
-};
-
-function routeValidationFailure(errors: Record<string, string>): RouteValidationFailure {
-  return { type: "validation", errors };
-}
-
-function isRouteValidationFailure(error: unknown): error is RouteValidationFailure {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "type" in error &&
-    (error as { type?: unknown }).type === "validation" &&
-    "errors" in error
-  );
-}
-
 // ── GET /api/payments ─────────────────────────────────────────
-// Query: partyId, method, fromDate, toDate, page, limit
+// Query: partyId, direction, method, fromDate, toDate, page, limit
 
 export async function GET(req: NextRequest) {
   try {
@@ -55,6 +36,9 @@ export async function GET(req: NextRequest) {
 
     const filter: Record<string, unknown> = {};
     if (query.partyId) filter.partyId = new mongoose.Types.ObjectId(query.partyId);
+    if (query.direction && (query.direction === "payin" || query.direction === "payout")) {
+      filter.direction = query.direction;
+    }
     if (query.method) filter.method = query.method;
     const dateRange = buildUtcDateRange(query.fromDate, query.toDate);
     if (dateRange) filter.date = dateRange;
@@ -112,105 +96,109 @@ export async function POST(req: NextRequest) {
     };
 
     let paymentId: mongoose.Types.ObjectId | undefined;
+    let splitInfo: {
+      wasOverpayment: boolean;
+      linkedPaymentId: string;
+      linkedAmount: number;
+      advancePaymentId: string;
+      advanceAmount: number;
+      totalPaid: number;
+    } | undefined;
 
     if (body.transactionId) {
       const Transaction = (await import("@/models/transaction.model")).default;
-      const session = await mongoose.startSession();
-      try {
-        await session.withTransaction(async () => {
-          const transaction = await Transaction.findById(body.transactionId, null, {
-            session,
-          });
-          if (!transaction) {
-            throw routeValidationFailure({ transactionId: "Transaction not found" });
-          }
-          if (transaction.partyId.toString() !== String(body.partyId)) {
-            throw routeValidationFailure({
-              transactionId: "Transaction does not belong to selected party",
-            });
-          }
+      const transaction = await Transaction.findById(body.transactionId);
 
-          const direction =
-            body.direction ?? (transaction.type === "purchase" ? "payout" : "payin");
-          const expectedDirection =
-            transaction.type === "purchase" ? "payout" : "payin";
-          if (direction !== expectedDirection) {
-            throw routeValidationFailure({
-              direction:
-                expectedDirection === "payout"
-                  ? "Purchase settlement requires payout"
-                  : "Sale settlement requires pay in",
-            });
-          }
-
-          const txnTotal = parseFloat(transaction.totalAmount.toString());
-          const txnPaid = parseFloat(transaction.paidAmount.toString());
-          const txnTotalCents = toMoneyCents(txnTotal);
-          const txnPaidCents = toMoneyCents(txnPaid);
-          const remainingCents = txnTotalCents - txnPaidCents;
-
-          if (remainingCents <= 0) {
-            throw routeValidationFailure({
-              amount: "Transaction is already fully settled. Record a standalone payment instead.",
-            });
-          }
-
-          if (amountCents > remainingCents) {
-            // -- SPLIT OVERPAYMENT LOGIC --
-            // 1. Fully settle this transaction
-            transaction.paidAmount = mongoose.Types.Decimal128.fromString(
-              centsToMoneyString(txnTotalCents)
-            );
-            await transaction.save({ validateBeforeSave: false, session });
-
-            // 2. Save the linked payment for the exact remaining amount
-            const linkedPayment = new Payment({
-              ...basePaymentData,
-              amount: mongoose.Types.Decimal128.fromString(
-                centsToMoneyString(remainingCents)
-              ),
-              transactionId: transaction._id,
-              direction,
-            });
-            await linkedPayment.save({ session });
-
-            // 3. Save the excess as an Advance (Standalone Payment)
-            const excessCents = amountCents - remainingCents;
-            const standalonePayment = new Payment({
-              ...basePaymentData,
-              amount: mongoose.Types.Decimal128.fromString(
-                centsToMoneyString(excessCents)
-              ),
-              direction,
-              notes: `${basePaymentData.notes || ""} (Overpayment from Txn ${transaction._id.toString().slice(-6)})`.trim(),
-            });
-            await standalonePayment.save({ session });
-
-            paymentId = standalonePayment._id as mongoose.Types.ObjectId;
-          } else {
-            // -- NORMAL EXACT OR PARTIAL PAYMENT --
-            const nextPaidCents = txnPaidCents + amountCents;
-            transaction.paidAmount = mongoose.Types.Decimal128.fromString(
-              centsToMoneyString(nextPaidCents)
-            );
-            await transaction.save({ validateBeforeSave: false, session });
-
-            const payment = new Payment({
-              ...basePaymentData,
-              transactionId: transaction._id,
-              direction,
-            });
-            await payment.save({ session });
-            paymentId = payment._id as mongoose.Types.ObjectId;
-          }
+      if (!transaction) {
+        return validationErrorResponse({ transactionId: "Transaction not found" });
+      }
+      if (transaction.partyId.toString() !== String(body.partyId)) {
+        return validationErrorResponse({
+          transactionId: "Transaction does not belong to selected party",
         });
-      } catch (error) {
-        if (isRouteValidationFailure(error)) {
-          return validationErrorResponse(error.errors);
-        }
-        throw error;
-      } finally {
-        await session.endSession();
+      }
+
+      const direction =
+        body.direction ?? (transaction.type === "purchase" ? "payout" : "payin");
+      const expectedDirection =
+        transaction.type === "purchase" ? "payout" : "payin";
+      if (direction !== expectedDirection) {
+        return validationErrorResponse({
+          direction:
+            expectedDirection === "payout"
+              ? "Purchase settlement requires payout"
+              : "Sale settlement requires pay in",
+        });
+      }
+
+      const txnTotal = parseFloat(transaction.totalAmount.toString());
+      const txnPaid = parseFloat(transaction.paidAmount.toString());
+      const txnTotalCents = toMoneyCents(txnTotal);
+      const txnPaidCents = toMoneyCents(txnPaid);
+      const remainingCents = txnTotalCents - txnPaidCents;
+
+      if (remainingCents <= 0) {
+        return validationErrorResponse({
+          amount: "Transaction is already fully settled. Record a standalone payment instead.",
+        });
+      }
+
+      if (amountCents > remainingCents) {
+        // -- SPLIT OVERPAYMENT LOGIC --
+        const excessCents = amountCents - remainingCents;
+
+        // 1. Fully settle this transaction
+        transaction.paidAmount = mongoose.Types.Decimal128.fromString(
+          centsToMoneyString(txnTotalCents)
+        );
+        await transaction.save({ validateBeforeSave: false });
+
+        // 2. Save the linked payment for the exact remaining amount
+        const linkedPayment = new Payment({
+          ...basePaymentData,
+          amount: mongoose.Types.Decimal128.fromString(
+            centsToMoneyString(remainingCents)
+          ),
+          transactionId: transaction._id,
+          direction,
+        });
+        await linkedPayment.save();
+
+        // 3. Save the excess as an Advance (Standalone Payment)
+        const standalonePayment = new Payment({
+          ...basePaymentData,
+          amount: mongoose.Types.Decimal128.fromString(
+            centsToMoneyString(excessCents)
+          ),
+          direction,
+          notes: `${basePaymentData.notes || ""} (Advance from Txn ${transaction._id.toString().slice(-6)})`.trim(),
+        });
+        await standalonePayment.save();
+
+        paymentId = linkedPayment._id as mongoose.Types.ObjectId;
+        splitInfo = {
+          wasOverpayment: true,
+          linkedPaymentId: (linkedPayment._id as mongoose.Types.ObjectId).toString(),
+          linkedAmount: parseFloat(centsToMoneyString(remainingCents)),
+          advancePaymentId: (standalonePayment._id as mongoose.Types.ObjectId).toString(),
+          advanceAmount: parseFloat(centsToMoneyString(excessCents)),
+          totalPaid: parseFloat(centsToMoneyString(amountCents)),
+        };
+      } else {
+        // -- NORMAL EXACT OR PARTIAL PAYMENT --
+        const nextPaidCents = txnPaidCents + amountCents;
+        transaction.paidAmount = mongoose.Types.Decimal128.fromString(
+          centsToMoneyString(nextPaidCents)
+        );
+        await transaction.save({ validateBeforeSave: false });
+
+        const payment = new Payment({
+          ...basePaymentData,
+          transactionId: transaction._id,
+          direction,
+        });
+        await payment.save();
+        paymentId = payment._id as mongoose.Types.ObjectId;
       }
     } else {
       const payment = await Payment.create({
@@ -229,10 +217,17 @@ export async function POST(req: NextRequest) {
       .populate("partyId", "name")
       .lean();
 
-    return createdResponse(
-      toPaymentDTO(populated as Record<string, unknown>),
-      "Payment recorded successfully"
-    );
+    const paymentData = toPaymentDTO(populated as Record<string, unknown>);
+
+    // If this was an overpayment split, include the split details
+    if (splitInfo) {
+      return createdResponse(
+        { ...paymentData, splitInfo },
+        `Payment recorded. Rs. ${splitInfo.linkedAmount} settled the transaction, Rs. ${splitInfo.advanceAmount} recorded as advance.`
+      );
+    }
+
+    return createdResponse(paymentData, "Payment recorded successfully");
   } catch (err) {
     return handleApiError(err);
   }

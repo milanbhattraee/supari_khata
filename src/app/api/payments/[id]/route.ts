@@ -74,7 +74,13 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
     const updateFields: Record<string, unknown> = {};
     if (body.direction !== undefined) updateFields.direction = body.direction;
     if (body.method !== undefined) updateFields.method = body.method;
-    if (body.date !== undefined) updateFields.date = new Date(body.date);
+    if (body.date !== undefined) {
+      const parsedDate = new Date(body.date);
+      if (isNaN(parsedDate.getTime())) {
+        return badRequestResponse("Invalid date format");
+      }
+      updateFields.date = parsedDate;
+    }
     if (body.referenceNumber !== undefined)
       updateFields.referenceNumber = body.referenceNumber;
     if (body.notes !== undefined) updateFields.notes = body.notes;
@@ -107,44 +113,29 @@ export async function DELETE(_req: NextRequest, { params }: RouteContext) {
 
     await dbConnect();
     const { id } = await params;
-    const Transaction = (await import("@/models/transaction.model")).default;
-    const session = await mongoose.startSession();
-    let foundPayment = true;
 
-    try {
-      await session.withTransaction(async () => {
-        const payment = await Payment.findById(id, null, { session });
-        if (!payment) {
-          foundPayment = false;
-          return;
-        }
+    const payment = await Payment.findById(id);
+    if (!payment) return notFoundResponse("Payment");
 
-        if (payment.transactionId) {
-          const transaction = await Transaction.findById(payment.transactionId, null, {
-            session,
-          });
+    if (payment.transactionId) {
+      const Transaction = (await import("@/models/transaction.model")).default;
+      const transaction = await Transaction.findById(payment.transactionId);
 
-          if (transaction) {
-            const paymentAmount = parseFloat(payment.amount.toString());
-            const txnPaid = parseFloat(transaction.paidAmount.toString());
-            const paymentAmountCents = toMoneyCents(paymentAmount);
-            const txnPaidCents = toMoneyCents(txnPaid);
-            const nextPaidCents = Math.max(0, txnPaidCents - paymentAmountCents);
+      if (transaction) {
+        const paymentAmount = parseFloat(payment.amount.toString());
+        const txnPaid = parseFloat(transaction.paidAmount.toString());
+        const paymentAmountCents = toMoneyCents(paymentAmount);
+        const txnPaidCents = toMoneyCents(txnPaid);
+        const nextPaidCents = Math.max(0, txnPaidCents - paymentAmountCents);
 
-            transaction.paidAmount = mongoose.Types.Decimal128.fromString(
-              centsToMoneyString(nextPaidCents)
-            );
-            await transaction.save({ validateBeforeSave: false, session });
-          }
-        }
-
-        await Payment.deleteOne({ _id: id }, { session });
-      });
-    } finally {
-      await session.endSession();
+        transaction.paidAmount = mongoose.Types.Decimal128.fromString(
+          centsToMoneyString(nextPaidCents)
+        );
+        await transaction.save({ validateBeforeSave: false });
+      }
     }
 
-    if (!foundPayment) return notFoundResponse("Payment");
+    await Payment.deleteOne({ _id: id });
 
     return successResponse(null, "Payment deleted successfully");
   } catch (err) {
