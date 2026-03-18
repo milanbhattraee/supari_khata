@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="32" fill="#10b981"/>
+
+  <!-- Ledger book -->
+  <g transform="translate(48, 36)">
+    <!-- Book cover -->
+    <rect x="0" y="0" width="96" height="120" rx="6" fill="white" opacity="0.95"/>
+
+    <!-- Left spine -->
+    <rect x="0" y="0" width="12" height="120" rx="6" fill="#047857"/>
+
+    <!-- Ledger lines -->
+    <line x1="21" y1="30" x2="87" y2="30" stroke="#10b981" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+    <line x1="21" y1="45" x2="87" y2="45" stroke="#10b981" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+    <line x1="21" y1="60" x2="75" y2="60" stroke="#10b981" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+    <line x1="21" y1="75" x2="82" y2="75" stroke="#10b981" stroke-width="3" stroke-linecap="round" opacity="0.4"/>
+    <line x1="21" y1="90" x2="67" y2="90" stroke="#10b981" stroke-width="3" stroke-linecap="round" opacity="0.4"/>
+
+    <!-- Rupee symbol -->
+    <g transform="translate(37.5, 97.5)">
+      <path d="M 4 0 L 19 0 M 4 4.5 L 19 4.5 M 11.5 0 Q 19 0 19 7.5 Q 19 12 11.5 12 L 4 22.5"
+            stroke="#047857" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </g>
+  </g>
+</svg>

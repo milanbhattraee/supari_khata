@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo } from "react";
+import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Phone,
@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/page-header";
 import { DetailSkeleton } from "@/components/skeletons";
 import { ErrorState } from "@/components/empty-state";
@@ -37,6 +38,7 @@ export default function PartyDetailPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { data: party, isLoading, error, refetch } = useParty(id);
   const { data: balance } = usePartyBalance(id);
   const { data: txnsData, isLoading: txnsLoading } = useTransactions({
@@ -85,11 +87,9 @@ export default function PartyDetailPage({
   }, [paymentsData?.data, txnsData?.data]);
 
   const handleDelete = () => {
-    if (confirm("Are you sure you want to delete this party?")) {
-      deleteParty.mutate(id, {
-        onSuccess: () => router.push("/parties"),
-      });
-    }
+    deleteParty.mutate(id, {
+      onSuccess: () => router.push("/parties"),
+    });
   };
 
   if (isLoading) return <DetailSkeleton />;
@@ -104,6 +104,18 @@ export default function PartyDetailPage({
 
   return (
     <>
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        variant="destructive"
+        title="Delete Party?"
+        description="This party will be deactivated if it has financial history. Otherwise, it will be permanently deleted."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        loading={deleteParty.isPending}
+        onConfirm={handleDelete}
+      />
+
       <PageHeader
         title={party.name}
         back
@@ -118,7 +130,7 @@ export default function PartyDetailPage({
               variant="ghost"
               size="icon"
               className="text-destructive"
-              onClick={handleDelete}
+              onClick={() => setShowDeleteDialog(true)}
               disabled={deleteParty.isPending}
             >
               <Trash2 className="h-4 w-4" />

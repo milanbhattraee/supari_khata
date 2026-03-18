@@ -63,3 +63,19 @@ export function useUpdateTransaction(id: string) {
     onError: (err) => toast.error(err.message),
   });
 }
+
+export function useDeleteTransaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/transactions/${id}`),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["parties"] });
+      qc.invalidateQueries({ queryKey: ["payments"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success(res.message || "Transaction deleted");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+}

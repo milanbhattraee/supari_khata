@@ -117,8 +117,10 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
 }
 
 // ── DELETE /api/transactions/:id ──────────────────────────────
-// Hard delete is blocked for financial integrity.
-// Only allow soft flag via isVoided if needed in future.
+// Deletes a transaction and reverses its effects:
+// - Reverses stock changes (purchase: subtract, sale: add back)
+// - Deletes all linked payments
+// - Blocks deletion if it would cause negative stock
 
 export async function DELETE(_req: NextRequest, { params }: RouteContext) {
   try {
@@ -126,12 +128,57 @@ export async function DELETE(_req: NextRequest, { params }: RouteContext) {
     if (auth instanceof Response) return auth;
 
     await dbConnect();
-    void params;
-    // Financial transactions should not be deleted in production.
-    // Return a clear message explaining why.
-    return badRequestResponse(
-      "Transactions cannot be deleted to preserve financial integrity. Contact admin if a correction is needed."
-    );
+    const { id } = await params;
+
+    // 1. Find transaction with product details
+    const transaction = await Transaction.findById(id);
+    if (!transaction) return notFoundResponse("Transaction");
+
+    const Product = (await import("@/models/product.model")).default;
+    const Payment = (await import("@/models/payment.model")).default;
+
+    const product = await Product.findById(transaction.productId);
+    if (!product) {
+      return badRequestResponse("Associated product not found");
+    }
+
+    const quantity = parseFloat(transaction.quantity.toString());
+    const currentStock = parseFloat(product.currentStock.toString());
+
+    // 2. Validate stock won't go negative (for purchase deletion)
+    if (transaction.type === "purchase") {
+      if (currentStock < quantity) {
+        return badRequestResponse(
+          `Cannot delete: would result in negative stock (current: ${roundMoney(currentStock)} ${product.unit}, removing: ${roundMoney(quantity)} ${product.unit}). Delete related sales first.`
+        );
+      }
+    }
+
+    // 3. Delete all linked payments (cascade delete)
+    const deletedPayments = await Payment.deleteMany({ transactionId: id });
+
+    // 4. Reverse stock changes
+    if (transaction.type === "purchase") {
+      // Purchase added stock → subtract it back
+      product.currentStock = mongoose.Types.Decimal128.fromString(
+        roundMoney(currentStock - quantity).toFixed(3)
+      );
+    } else if (transaction.type === "sale") {
+      // Sale removed stock → add it back
+      product.currentStock = mongoose.Types.Decimal128.fromString(
+        roundMoney(currentStock + quantity).toFixed(3)
+      );
+    }
+    await product.save();
+
+    // 5. Delete the transaction
+    await Transaction.deleteOne({ _id: id });
+
+    const message = deletedPayments.deletedCount > 0
+      ? `Transaction deleted (${deletedPayments.deletedCount} linked payment(s) also removed)`
+      : "Transaction deleted successfully";
+
+    return successResponse(null, message);
   } catch (err) {
     return handleApiError(err);
   }

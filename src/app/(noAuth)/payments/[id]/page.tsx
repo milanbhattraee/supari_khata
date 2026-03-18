@@ -1,10 +1,11 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDownLeft, ArrowUpRight, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/page-header";
 import { DetailSkeleton } from "@/components/skeletons";
 import { ErrorState } from "@/components/empty-state";
@@ -30,15 +31,14 @@ export default function PaymentDetailPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { data: payment, isLoading, error, refetch } = usePayment(id);
   const deletePayment = useDeletePayment();
 
   const handleDelete = () => {
-    if (confirm("Are you sure you want to delete this payment?")) {
-      deletePayment.mutate(id, {
-        onSuccess: () => router.push("/payments"),
-      });
-    }
+    deletePayment.mutate(id, {
+      onSuccess: () => router.push("/payments"),
+    });
   };
 
   if (isLoading) return <DetailSkeleton />;
@@ -50,6 +50,18 @@ export default function PaymentDetailPage({
 
   return (
     <>
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        variant="destructive"
+        title="Delete Payment?"
+        description="This payment will be permanently deleted. If linked to a transaction, the transaction's paid amount will be adjusted."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        loading={deletePayment.isPending}
+        onConfirm={handleDelete}
+      />
+
       <PageHeader
         title="Payment Detail"
         back
@@ -58,7 +70,7 @@ export default function PaymentDetailPage({
             variant="ghost"
             size="icon"
             className="text-destructive"
-            onClick={handleDelete}
+            onClick={() => setShowDeleteDialog(true)}
             disabled={deletePayment.isPending}
           >
             <Trash2 className="h-4 w-4" />

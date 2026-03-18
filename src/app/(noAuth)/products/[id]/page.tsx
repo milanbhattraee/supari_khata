@@ -1,11 +1,12 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/page-header";
 import { DetailSkeleton } from "@/components/skeletons";
 import { ErrorState } from "@/components/empty-state";
@@ -23,15 +24,14 @@ export default function ProductDetailPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { data: product, isLoading, error, refetch } = useProduct(id);
   const deleteProduct = useDeleteProduct();
 
   const handleDelete = () => {
-    if (confirm("Are you sure you want to delete this product?")) {
-      deleteProduct.mutate(id, {
-        onSuccess: () => router.push("/products"),
-      });
-    }
+    deleteProduct.mutate(id, {
+      onSuccess: () => router.push("/products"),
+    });
   };
 
   if (isLoading) return <DetailSkeleton />;
@@ -41,6 +41,18 @@ export default function ProductDetailPage({
 
   return (
     <>
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        variant="destructive"
+        title="Delete Product?"
+        description="This product will be deactivated if it has transaction history. Otherwise, it will be permanently deleted."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        loading={deleteProduct.isPending}
+        onConfirm={handleDelete}
+      />
+
       <PageHeader
         title={product.name}
         back
@@ -55,7 +67,7 @@ export default function ProductDetailPage({
               variant="ghost"
               size="icon"
               className="text-destructive"
-              onClick={handleDelete}
+              onClick={() => setShowDeleteDialog(true)}
               disabled={deleteProduct.isPending}
             >
               <Trash2 className="h-4 w-4" />
