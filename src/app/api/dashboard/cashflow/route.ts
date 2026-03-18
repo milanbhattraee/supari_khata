@@ -19,11 +19,15 @@ export async function GET(_req: NextRequest) {
 
     await dbConnect();
 
+    // ── Nepal timezone: UTC+5:45 ────────────────────────────────────────────
     const NEPAL_OFFSET_MS = (5 * 60 + 45) * 60 * 1000;
-    const now = new Date();
+    const nowNepal = new Date(Date.now() + NEPAL_OFFSET_MS);
+    const nepalMidnight = new Date(nowNepal);
+    nepalMidnight.setUTCHours(0, 0, 0, 0);
+    const startOfToday = new Date(nepalMidnight.getTime() - NEPAL_OFFSET_MS);
 
-    // Last 7 days
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    // Last 7 days (from Nepal midnight perspective)
+    const sevenDaysAgo = new Date(startOfToday.getTime() - 6 * 24 * 60 * 60 * 1000);
 
     // ─────────────────────────────────────────────────────────────────────────
     // STEP 1: Get TRANSACTION paidAmount grouped by day and type
@@ -94,7 +98,7 @@ export async function GET(_req: NextRequest) {
     const dailyCashflow = [];
 
     for (let i = 6; i >= 0; i--) {
-      const dayDate = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const dayDate = new Date(startOfToday.getTime() - i * 24 * 60 * 60 * 1000);
       const dayDateInNepal = new Date(dayDate.getTime() + NEPAL_OFFSET_MS);
       const dateStr = dayDateInNepal.toISOString().split("T")[0];
 

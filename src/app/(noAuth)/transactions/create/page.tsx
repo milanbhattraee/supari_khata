@@ -70,8 +70,6 @@ function CreateTransactionContent() {
   const totalAmount = quantity * rate;
   const paidAmount = watch("paidAmount") || 0;
   const balance = totalAmount - paidAmount;
-  const selectedPartyId = watch("partyId");
-  const selectedProductId = watch("productId");
 
   // Create lookup maps for displaying names
   const partyMap = useMemo(() => {

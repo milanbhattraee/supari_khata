@@ -75,6 +75,11 @@ const PartySchema: Schema = new Schema(
   }
 );
 
+// ─── DATABASE INDEXES ───────────────────────────────────────────────────────
+// Indexes for optimizing common queries
+PartySchema.index({ isActive: 1, name: 1 }); // Active parties sorted by name
+PartySchema.index({ category: 1, isActive: 1 }); // Parties by category
+
 // ── Static: calculate outstanding balance for a single party ─────────────────
 // Returns { receivable, payable, net } where:
 //   net > 0  => party owes YOU (to-receive)

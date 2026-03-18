@@ -320,29 +320,6 @@ export async function GET(_req: NextRequest) {
     const totalMoneyIn = txnSalePaid + standalonePayIn + linkedOldPayIn;
     const totalMoneyOut = txnPurchasePaid + standalonePayOut + linkedOldPayOut;
 
-    // ── LOG: Yearly cash position breakdown ──
-    console.log("=== DASHBOARD YEARLY CALCULATIONS ===");
-    console.log("Nepali Year:", currentNpDate.getYear());
-    console.log("Year Start:", startOfYear.toISOString());
-    console.log("\n--- Purchase Stats ---");
-    console.log("Total Purchases:", purchaseStats?.totalAmount ?? 0);
-    console.log("Purchase Count:", purchaseStats?.count ?? 0);
-    console.log("\n--- Sale Stats ---");
-    console.log("Total Sales:", saleStats?.totalAmount ?? 0);
-    console.log("Sale Count:", saleStats?.count ?? 0);
-    console.log("\n--- Yearly Cash Breakdown ---");
-    console.log("Txn Sale Paid (from sale txns this year):", txnSalePaid);
-    console.log("Txn Purchase Paid (from purchase txns this year):", txnPurchasePaid);
-    console.log("Standalone Pay In:", standalonePayIn);
-    console.log("Standalone Pay Out:", standalonePayOut);
-    console.log("Linked Payment Pay In (old txns):", linkedOldPayIn);
-    console.log("Linked Payment Pay Out (old txns):", linkedOldPayOut);
-    console.log("--- Money In Calculation ---");
-    console.log(`  = txnSalePaid(${txnSalePaid}) + standalonePayIn(${standalonePayIn}) + linkedOldPayIn(${linkedOldPayIn})`);
-    console.log(`  = ${totalMoneyIn}`);
-    console.log("--- Money Out Calculation ---");
-    console.log(`  = txnPurchasePaid(${txnPurchasePaid}) + standalonePayOut(${standalonePayOut}) + linkedOldPayOut(${linkedOldPayOut})`);
-    console.log(`  = ${totalMoneyOut}`);
 
     // ── Build cashflow arrays ───────────────────────────────────────────────
     // Helper to look up cashflow amounts for a given date string

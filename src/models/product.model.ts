@@ -45,6 +45,10 @@ const ProductSchema: Schema = new Schema(
   }
 );
 
+// ─── DATABASE INDEXES ───────────────────────────────────────────────────────
+// name already has unique index
+ProductSchema.index({ isActive: 1, name: 1 }); // Active products sorted by name
+
 const ProductModel =
   mongoose.models.Product || mongoose.model<IProduct>("Product", ProductSchema);
 

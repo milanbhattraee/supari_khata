@@ -52,4 +52,12 @@ const PaymentSchema = new Schema(
   }
 );
 
+// ─── DATABASE INDEXES ───────────────────────────────────────────────────────
+// Indexes for optimizing common queries
+PaymentSchema.index({ partyId: 1, date: -1 }); // Party payments sorted by date
+PaymentSchema.index({ transactionId: 1 }); // Payments linked to a transaction
+PaymentSchema.index({ date: -1 }); // Recent payments
+PaymentSchema.index({ direction: 1, date: -1 }); // Payments by direction
+PaymentSchema.index({ partyId: 1, transactionId: 1 }); // Standalone payments filter
+
 export default models.Payment || model("Payment", PaymentSchema);

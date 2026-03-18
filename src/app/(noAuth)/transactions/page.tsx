@@ -151,7 +151,7 @@ function TransactionsContent() {
                     >
                       {txn.balanceAmount > 0
                         ? `Unpaid: ${formatNepaliCurrency(txn.balanceAmount)}`
-                        : `Settled: ${formatNepaliCurrency(0)}`}
+                        : "Settled"}
                     </p>
                   </div>
                   <ChevronRight className="h-[18px] w-[18px] text-foreground/20 shrink-0" />

@@ -42,7 +42,6 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
       direction,
     };
 
-    console.log("Calculated party balance:", data);
     return successResponse(data, "Party balance calculated");
   } catch (err) {
     return handleApiError(err);

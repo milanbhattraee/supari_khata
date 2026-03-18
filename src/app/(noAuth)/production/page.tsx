@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, Factory, ArrowRight, ChevronRight, Search } from "lucide-react";
+import { Plus, Factory, ArrowRight, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/page-header";
 import { ListSkeleton } from "@/components/skeletons";
 import { EmptyState, ErrorState } from "@/components/empty-state";

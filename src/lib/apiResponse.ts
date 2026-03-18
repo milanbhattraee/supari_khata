@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ApiResponse, PaginationMeta } from "@/types/dto";
+import { logger } from "@/lib/logger";
 
 // ── Success helpers ──────────────────────────────────────────
 
@@ -57,7 +58,7 @@ export function validationErrorResponse(
 // ── Central error handler (use in every catch block) ─────────
 
 export function handleApiError(err: unknown): NextResponse<ApiResponse> {
-  console.error("[API Error]", err);
+  logger.error("API Error", err);
 
   if (err instanceof Error) {
     // Mongoose validation error

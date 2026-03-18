@@ -5,11 +5,15 @@ import dbConnect from "@/lib/dbConnect";
 import UserModel from "@/models/auth.model";
 import { handleApiError, successResponse, badRequestResponse } from "@/lib/apiResponse";
 import { setAuthTokenCookie } from "@/lib/auth-cookie";
+import { withAuthRateLimit } from "@/lib/rate-limit";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
 export async function POST(req: NextRequest) {
   try {
+    // Rate limit auth routes more strictly
+    const rateLimitResponse = withAuthRateLimit(req);
+    if (rateLimitResponse) return rateLimitResponse;
     if (!JWT_SECRET) {
       return badRequestResponse("Server authentication is not configured");
     }

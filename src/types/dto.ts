@@ -87,7 +87,7 @@ export interface PartyBalanceResponseDTO {
   openingBalance: number;
   totalSalesDue: number;           // what customer owes you (from sales)
   totalPurchasesDue: number;       // what you owe supplier (from purchases)
-  totalStandalonePayments: number; // sum of all Payment records
+  totalStandalonePayments: number; // NET of standalone payments (payin - payout)
   /** Positive = party owes YOU | Negative = YOU owe the party */
   outstandingBalance: number;
   direction: "to-receive" | "to-pay" | "settled";

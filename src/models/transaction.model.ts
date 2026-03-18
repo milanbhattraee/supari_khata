@@ -108,6 +108,14 @@ const TransactionSchema: Schema = new Schema(
   }
 );
 
+// ─── DATABASE INDEXES ───────────────────────────────────────────────────────
+// Indexes for optimizing common queries
+TransactionSchema.index({ partyId: 1, date: -1 }); // Party transactions sorted by date
+TransactionSchema.index({ productId: 1, date: -1 }); // Product transactions sorted by date
+TransactionSchema.index({ date: -1 }); // Recent transactions
+TransactionSchema.index({ type: 1, date: -1 }); // Transactions by type
+TransactionSchema.index({ partyId: 1, type: 1 }); // Party transactions by type (for aggregations)
+
 // ─── PRE-SAVE MIDDLEWARE ─────────────────────────────────────────────────────
 
 TransactionSchema.pre("save", async function () {

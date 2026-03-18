@@ -7,9 +7,13 @@ import {
   createdResponse,
   badRequestResponse,
 } from "@/lib/apiResponse";
+import { withAuthRateLimit } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
   try {
+    // Rate limit auth routes more strictly
+    const rateLimitResponse = withAuthRateLimit(req);
+    if (rateLimitResponse) return rateLimitResponse;
     await dbConnect();
     const { username, password, email } = await req.json();
 
