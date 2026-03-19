@@ -13,6 +13,7 @@ import {
   Factory,
   ChevronRight,
   IndianRupee,
+  Receipt,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/page-header";
@@ -89,6 +90,27 @@ export default function DashboardPage() {
               {formatDashboardCurrency(data.grossProfitYearly)}
             </span>
           </div>
+
+          {/* Total Expenses */}
+          <Link href="/expenses">
+            <div className="border-t border-border/30 bg-background/40 px-4 py-3 flex items-center justify-between active:bg-foreground/5">
+              <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                <Receipt className="h-3 w-3 text-red-500" />
+                Total Expenses
+              </span>
+              <span className="text-[14px] font-bold text-red-500">
+                {formatDashboardCurrency(data.totalExpensesYearly)}
+              </span>
+            </div>
+          </Link>
+
+          {/* Net Profit */}
+          <div className="border-t border-border/30 bg-primary/5 px-4 py-3 flex items-center justify-between">
+            <span className="text-[11px] font-medium">Net Profit / Loss</span>
+            <span className={`text-[15px] font-bold ${data.netProfitYearly >= 0 ? "text-green-600" : "text-red-500"}`}>
+              {formatDashboardCurrency(data.netProfitYearly)}
+            </span>
+          </div>
         </div>
 
         {/* ── Section 2: Outstanding Balance (All-Time) ─────────────────
@@ -107,9 +129,6 @@ export default function DashboardPage() {
                 <p className="text-[10px] text-muted-foreground">To Receive</p>
               </div>
               <p className="text-[15px] font-bold text-green-700 dark:text-green-400">{formatDashboardCurrency(data.totalOutstandingReceivable)}</p>
-              {data.totalCustomerAdvance > 0 && (
-                <p className="text-[9px] text-blue-500 mt-0.5">Customer Advance: {formatDashboardCurrency(data.totalCustomerAdvance)}</p>
-              )}
             </div>
             <div className="bg-background/40 p-3.5">
               <div className="flex items-center gap-1 mb-1">
@@ -117,9 +136,6 @@ export default function DashboardPage() {
                 <p className="text-[10px] text-muted-foreground">To Pay</p>
               </div>
               <p className="text-[15px] font-bold text-red-600 dark:text-red-400">{formatDashboardCurrency(data.totalOutstandingPayable)}</p>
-              {data.totalSupplierAdvance > 0 && (
-                <p className="text-[9px] text-blue-500 mt-0.5">Supplier Advance: {formatDashboardCurrency(data.totalSupplierAdvance)}</p>
-              )}
             </div>
           </div>
         </div>
@@ -205,6 +221,14 @@ export default function DashboardPage() {
                 <Wallet className="h-5 w-5 text-green-600" />
               </div>
               <p className="text-xs font-medium">Record Payment</p>
+            </div>
+          </Link>
+          <Link href="/expenses/create">
+            <div className="glass-card rounded-2xl p-4 text-center">
+              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/10 mb-2">
+                <Receipt className="h-5 w-5 text-red-600" />
+              </div>
+              <p className="text-xs font-medium">Record Expense</p>
             </div>
           </Link>
           <Link href="/production/create">

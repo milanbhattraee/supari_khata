@@ -7,7 +7,7 @@ import {
   CreatePartyDTO,
   UpdatePartyDTO,
 } from "../types";
-import { PaginationMeta } from "@/types/dto";
+import { PaginationMeta, ActivityResponseDTO } from "@/types/dto";
 
 export function useParties(params?: Record<string, string>) {
   return useQuery({
@@ -75,5 +75,22 @@ export function useDeleteParty() {
       toast.success("Party deleted");
     },
     onError: (err) => toast.error(err.message),
+  });
+}
+
+export function usePartyActivities(
+  partyId: string,
+  params?: Record<string, string>
+) {
+  return useQuery({
+    queryKey: ["parties", partyId, "activities", params],
+    queryFn: () =>
+      api
+        .get<ActivityResponseDTO[]>(`/parties/${partyId}/activities`, params)
+        .then((res) => ({
+          data: res.data!,
+          meta: res.meta as PaginationMeta,
+        })),
+    enabled: !!partyId,
   });
 }

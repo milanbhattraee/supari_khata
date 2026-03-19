@@ -112,8 +112,6 @@ export async function GET(_req: NextRequest) {
     // ─────────────────────────────────────────────────────────────────────────
     let totalReceivable = 0;
     let totalPayable = 0;
-    let totalCustomerAdvance = 0;
-    let totalSupplierAdvance = 0;
 
     const partyDetails: Array<{
       partyId: string;
@@ -150,8 +148,6 @@ export async function GET(_req: NextRequest) {
       // Add to aggregates
       totalReceivable += outstanding.receivable;
       totalPayable += outstanding.payable;
-      totalCustomerAdvance += outstanding.customerAdvance;
-      totalSupplierAdvance += outstanding.supplierAdvance;
 
       partyDetails.push({
         partyId,
@@ -168,8 +164,6 @@ export async function GET(_req: NextRequest) {
         summary: {
           totalReceivable: roundMoney(totalReceivable),
           totalPayable: roundMoney(totalPayable),
-          totalCustomerAdvance: roundMoney(totalCustomerAdvance),
-          totalSupplierAdvance: roundMoney(totalSupplierAdvance),
           net: roundMoney(totalReceivable - totalPayable)
         },
         byParty: partyDetails,

@@ -132,10 +132,10 @@ function TransactionsContent() {
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[15px] font-medium truncate">
+                    <p className="text-[15px] font-medium text-wrap break-words">
                       {txn.party.name}
                     </p>
-                    <p className="text-[13px] text-muted-foreground truncate">
+                    <p className="text-[13px] text-muted-foreground text-wrap break-words">
                       {txn.product.name} &middot; {txn.quantity} {txn.product.unit} &middot;{" "}
                       {toNepaliDate(txn.date)}
                     </p>

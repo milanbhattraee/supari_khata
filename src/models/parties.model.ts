@@ -18,6 +18,14 @@ export interface IParty extends Document {
 // Returns both gross sides independently (receivable / payable) AND a net figure.
 // For "both"-category parties the old single-number net would silently cancel
 // real obligations on both sides — this makes each side visible.
+
+// Product-wise kg breakdown
+export interface IProductKgBreakdown {
+  productId: string;
+  productName: string;
+  kg: number;
+}
+
 export interface IOutstandingBalance {
   receivable: number; // what this party owes YOU  (positive = they owe you)
   payable: number;    // what YOU owe this party   (positive = you owe them)
@@ -25,6 +33,10 @@ export interface IOutstandingBalance {
   openingBalance: number;
   totalSalesDue: number;
   totalPurchasesDue: number;
+  totalSalesKg: number;      // Total kg sold to this party
+  totalPurchasesKg: number;  // Total kg purchased from this party
+  salesByProduct: IProductKgBreakdown[];     // kg sold broken down by product
+  purchasesByProduct: IProductKgBreakdown[]; // kg purchased broken down by product
   totalPayIn: number;
   totalPayout: number;
   totalStandalonePayments: number;
@@ -97,13 +109,34 @@ PartySchema.statics.getOutstandingBalance = async function (
   const party = await this.findById(partyId).lean();
   if (!party) throw new Error("Party not found");
 
-  // Sum of all unpaid amounts from transactions — grouped by type
+  // Sum of all unpaid amounts and quantities from transactions — grouped by type
   const txnResult = await TransactionModel.aggregate([
     { $match: { partyId: new mongoose.Types.ObjectId(partyId) } },
     {
       $group: {
         _id: "$type",
         totalBalance: { $sum: { $toDouble: "$balanceAmount" } },
+        totalQuantity: { $sum: { $toDouble: "$quantity" } },
+      },
+    },
+  ]);
+
+  // Product-wise kg breakdown — grouped by type and product
+  const productKgResult = await TransactionModel.aggregate([
+    { $match: { partyId: new mongoose.Types.ObjectId(partyId) } },
+    {
+      $lookup: {
+        from: "products",
+        localField: "productId",
+        foreignField: "_id",
+        as: "product",
+      },
+    },
+    { $unwind: "$product" },
+    {
+      $group: {
+        _id: { type: "$type", productId: "$productId", productName: "$product.name" },
+        totalQuantity: { $sum: { $toDouble: "$quantity" } },
       },
     },
   ]);
@@ -135,14 +168,39 @@ PartySchema.statics.getOutstandingBalance = async function (
 
   const saleBalance     = txnResult.find((t: { _id: string }) => t._id === "sale")?.totalBalance      ?? 0;
   const purchaseBalance = txnResult.find((t: { _id: string }) => t._id === "purchase")?.totalBalance  ?? 0;
+  const saleQuantity    = txnResult.find((t: { _id: string }) => t._id === "sale")?.totalQuantity     ?? 0;
+  const purchaseQuantity = txnResult.find((t: { _id: string }) => t._id === "purchase")?.totalQuantity ?? 0;
   const totalPayIn      = paymentResult.find((p: { _id: string }) => p._id === "payin")?.totalAmount  ?? 0;
   const totalPayout     = paymentResult.find((p: { _id: string }) => p._id === "payout")?.totalAmount ?? 0;
+
+  // Build product-wise breakdowns
+  const salesByProduct: IProductKgBreakdown[] = [];
+  const purchasesByProduct: IProductKgBreakdown[] = [];
+
+  for (const row of productKgResult) {
+    const breakdown: IProductKgBreakdown = {
+      productId: row._id.productId.toString(),
+      productName: row._id.productName,
+      kg: roundMoney(row.totalQuantity ?? 0),
+    };
+    if (row._id.type === "sale") {
+      salesByProduct.push(breakdown);
+    } else if (row._id.type === "purchase") {
+      purchasesByProduct.push(breakdown);
+    }
+  }
+
+  // Sort by product name for consistent display
+  salesByProduct.sort((a, b) => a.productName.localeCompare(b.productName));
+  purchasesByProduct.sort((a, b) => a.productName.localeCompare(b.productName));
 
   // Guard against any non-finite values creeping in from aggregates
   const safe = (n: unknown) => (Number.isFinite(n as number) ? (n as number) : 0);
 
   const saleBalSafe     = safe(saleBalance);
   const purchaseBalSafe = safe(purchaseBalance);
+  const saleKgSafe      = safe(saleQuantity);
+  const purchaseKgSafe  = safe(purchaseQuantity);
   const payInSafe       = safe(totalPayIn);
   const payoutSafe      = safe(totalPayout);
 
@@ -159,6 +217,10 @@ PartySchema.statics.getOutstandingBalance = async function (
     openingBalance: roundMoney(openingBal),
     totalSalesDue: roundMoney(saleBalSafe),
     totalPurchasesDue: roundMoney(purchaseBalSafe),
+    totalSalesKg: roundMoney(saleKgSafe),
+    totalPurchasesKg: roundMoney(purchaseKgSafe),
+    salesByProduct,
+    purchasesByProduct,
     totalPayIn: roundMoney(payInSafe),
     totalPayout: roundMoney(payoutSafe),
     totalStandalonePayments: roundMoney(payInSafe - payoutSafe),

@@ -62,6 +62,13 @@ export interface UpdatePartyDTO {
   isActive?: boolean;
 }
 
+/** Product-wise kg breakdown */
+export interface ProductKgBreakdown {
+  productId: string;
+  productName: string;
+  kg: number;
+}
+
 /** Shape returned to the client for a single Party */
 export interface PartyResponseDTO {
   _id: string;
@@ -77,6 +84,10 @@ export interface PartyResponseDTO {
     receivable: number;
     payable: number;
     net: number;
+    salesKg: number;
+    purchasesKg: number;
+    salesByProduct?: ProductKgBreakdown[];
+    purchasesByProduct?: ProductKgBreakdown[];
   };
 }
 
@@ -87,6 +98,10 @@ export interface PartyBalanceResponseDTO {
   openingBalance: number;
   totalSalesDue: number;           // what customer owes you (from sales)
   totalPurchasesDue: number;       // what you owe supplier (from purchases)
+  totalSalesKg: number;            // total kg sold to this party
+  totalPurchasesKg: number;        // total kg purchased from this party
+  salesByProduct?: ProductKgBreakdown[];     // kg sold broken down by product
+  purchasesByProduct?: ProductKgBreakdown[]; // kg purchased broken down by product
   totalStandalonePayments: number; // NET of standalone payments (payin - payout)
   /** Positive = party owes YOU | Negative = YOU owe the party */
   outstandingBalance: number;
@@ -270,6 +285,36 @@ export interface ProductionEntryResponseDTO {
 }
 
 // ============================================================
+//  EXPENSE DTOs
+// ============================================================
+
+export interface CreateExpenseDTO {
+  amount: number;                // required — must be > 0
+  description: string;           // required
+  date?: string;                 // ISO date string; defaults to now
+}
+
+export interface UpdateExpenseDTO {
+  amount?: number;
+  description?: string;
+  date?: string;
+}
+
+export interface ExpenseResponseDTO {
+  _id: string;
+  amount: number;
+  description: string;
+  date: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExpenseQueryDTO extends PaginationQuery {
+  fromDate?: string;
+  toDate?: string;
+}
+
+// ============================================================
 //  DASHBOARD / ANALYTICS DTOs
 // ============================================================
 
@@ -282,6 +327,8 @@ export interface DashboardSummaryDTO {
   totalPurchasesYearly: number;           // SUM(purchase txn.totalAmount) this year
   totalSalesYearly: number;               // SUM(sale txn.totalAmount) this year
   grossProfitYearly: number;              // Sales - Purchases (business margin)
+  totalExpensesYearly: number;            // SUM(expense.amount) this year
+  netProfitYearly: number;                // grossProfitYearly - totalExpensesYearly
 
   // ── Yearly Cash Position (actual money movement) ────────────────────────
   // Money In  = sale txn.paidAmount + standalone payin payments (this year)
@@ -297,13 +344,34 @@ export interface DashboardSummaryDTO {
   totalOutstandingReceivable: number;     // money customers owe you (sum of all party receivables)
   totalOutstandingPayable: number;        // money you owe suppliers (sum of all party payables)
 
-  // ── Advances (when party payments exceed their dues) ──────────────────────
-  totalCustomerAdvance: number;           // customers paid more than owed (from party ledgers)
-  totalSupplierAdvance: number;           // you paid more than you owe (from party ledgers)
-
   lowStockProducts: ProductResponseDTO[];
   cashflow: {
     daily: { date: string; moneyIn: number; moneyOut: number }[];
     monthly: { date: string; moneyIn: number; moneyOut: number }[];
   };
+}
+
+// ============================================================
+//  ACTIVITY DTOs (Combined transactions + payments)
+// ============================================================
+
+export type ActivityKind = "transaction" | "payment";
+
+export interface ActivityResponseDTO {
+  _id: string;
+  kind: ActivityKind;
+  date: string;
+  // Transaction fields (when kind === "transaction")
+  type?: TransactionType;
+  product?: { _id: string; name: string; unit: ProductUnit };
+  quantity?: number;
+  ratePerKg?: number;
+  totalAmount?: number;
+  balanceAmount?: number;
+  // Payment fields (when kind === "payment")
+  amount?: number;
+  direction?: PaymentDirection;
+  method?: PaymentMethod;
+  notes: string | null;
+  createdAt: string;
 }

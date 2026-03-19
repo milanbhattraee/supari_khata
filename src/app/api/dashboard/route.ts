@@ -4,6 +4,7 @@ import Party from "@/models/parties.model";
 import Product from "@/models/product.model";
 import Transaction from "@/models/transaction.model";
 import Payment from "@/models/payment.model";
+import Expense from "@/models/expense.model";
 import { successResponse, handleApiError } from "@/lib/apiResponse";
 import { DashboardSummaryDTO } from "@/types/dto";
 import mongoose from "mongoose";
@@ -93,6 +94,8 @@ export async function GET(_req: NextRequest) {
       allPartyTransactionBalances,
       allPartyStandalonePayments,
       allPartyOpeningBalances,
+      // Expense data
+      yearlyExpenseStats,
     ] = await Promise.all([
       // 1. Active product count
       Product.countDocuments({ isActive: true }),
@@ -301,6 +304,14 @@ export async function GET(_req: NextRequest) {
       Party.find({ isActive: true })
         .select("_id openingBalance")
         .lean(),
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // 11. YEARLY: Total expenses
+      // ═══════════════════════════════════════════════════════════════════════
+      Expense.aggregate([
+        { $match: { date: { $gte: startOfYear } } },
+        { $group: { _id: null, totalAmount: { $sum: { $toDouble: "$amount" } } } },
+      ]),
     ]);
 
     // ── Yearly stats ────────────────────────────────────────────────────────
@@ -406,6 +417,9 @@ export async function GET(_req: NextRequest) {
     // ── Build response ──────────────────────────────────────────────────────
     const totalPurchasesYearly = purchaseStats?.totalAmount ?? 0;
     const totalSalesYearly = saleStats?.totalAmount ?? 0;
+    const grossProfitYearly = totalSalesYearly - totalPurchasesYearly;
+    const totalExpensesYearly = yearlyExpenseStats[0]?.totalAmount ?? 0;
+    const netProfitYearly = grossProfitYearly - totalExpensesYearly;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // OUTSTANDING BALANCE (All-Time - From Party Ledgers)
@@ -448,8 +462,6 @@ export async function GET(_req: NextRequest) {
     // Calculate outstanding for each party using the same formula as Party.getOutstandingBalance
     let totalReceivable = 0;
     let totalPayable = 0;
-    let totalCustAdvance = 0;
-    let totalSuppAdvance = 0;
 
     for (const party of allPartyOpeningBalances) {
       const partyIdStr = party._id.toString();
@@ -478,8 +490,6 @@ export async function GET(_req: NextRequest) {
 
       totalReceivable += result.receivable;
       totalPayable += result.payable;
-      totalCustAdvance += result.customerAdvance;
-      totalSuppAdvance += result.supplierAdvance;
     }
 
     const data: DashboardSummaryDTO = {
@@ -490,7 +500,9 @@ export async function GET(_req: NextRequest) {
       totalTransactionsYearly: roundMoney(totalPurchasesYearly + totalSalesYearly),
       totalPurchasesYearly: roundMoney(totalPurchasesYearly),
       totalSalesYearly: roundMoney(totalSalesYearly),
-      grossProfitYearly: roundMoney(totalSalesYearly - totalPurchasesYearly),
+      grossProfitYearly: roundMoney(grossProfitYearly),
+      totalExpensesYearly: roundMoney(totalExpensesYearly),
+      netProfitYearly: roundMoney(netProfitYearly),
 
       // Cash position (actual money movement) — YEARLY
       totalMoneyInYearly: roundMoney(totalMoneyIn),
@@ -501,10 +513,6 @@ export async function GET(_req: NextRequest) {
       // These values now EXACTLY match what's shown on individual party pages
       totalOutstandingReceivable: roundMoney(totalReceivable),
       totalOutstandingPayable: roundMoney(totalPayable),
-
-      // Advances (customer/supplier paid more than they owe)
-      totalCustomerAdvance: roundMoney(totalCustAdvance),
-      totalSupplierAdvance: roundMoney(totalSuppAdvance),
 
       lowStockProducts: stockSummary.map((p) => ({
         _id: (p._id as mongoose.Types.ObjectId).toString(),

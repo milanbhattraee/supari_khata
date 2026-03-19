@@ -86,7 +86,7 @@ function CreateTransactionContent() {
 
   const onSubmit = (data: CreateTransactionFormValues) => {
     createTxn.mutate(data, {
-      onSuccess: () => router.push("/transactions"),
+      onSuccess: () => router.push(`/parties/${data.partyId}`),
     });
   };
 

@@ -6,6 +6,7 @@ import {
   ProductResponseDTO,
   ProductionEntryResponseDTO,
   TransactionResponseDTO,
+  ExpenseResponseDTO,
 } from "@/types/dto";
 
 function asDecimal(value: unknown): mongoose.Types.Decimal128 | null {
@@ -123,5 +124,16 @@ export function toPaymentDTO(p: Record<string, unknown>): PaymentResponseDTO {
     notes: (p.notes as string) ?? null,
     createdAt: (p.createdAt as Date).toISOString(),
     updatedAt: (p.updatedAt as Date).toISOString(),
+  };
+}
+
+export function toExpenseDTO(e: Record<string, unknown>): ExpenseResponseDTO {
+  return {
+    _id: (e._id as { toString(): string }).toString(),
+    amount: parseFloat(asDecimal(e.amount)?.toString() ?? "0"),
+    description: e.description as string,
+    date: (e.date as Date).toISOString(),
+    createdAt: (e.createdAt as Date).toISOString(),
+    updatedAt: (e.updatedAt as Date).toISOString(),
   };
 }

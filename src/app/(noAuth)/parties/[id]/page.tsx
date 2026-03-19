@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Phone,
@@ -16,16 +16,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { PageHeader } from "@/components/page-header";
 import { DetailSkeleton } from "@/components/skeletons";
 import { ErrorState } from "@/components/empty-state";
 import {
   useParty,
   usePartyBalance,
+  usePartyActivities,
   useDeleteParty,
 } from "@/app/features/parties/hooks/useParties";
-import { useTransactions } from "@/app/features/transactions/hooks/useTransactions";
-import { usePayments } from "@/app/features/payments/hooks/usePayments";
 import { formatNepaliCurrency } from "@/lib/format";
 import { toNepaliDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -39,52 +39,19 @@ export default function PartyDetailPage({
   const { id } = use(params);
   const router = useRouter();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [activityPage, setActivityPage] = useState(1);
   const { data: party, isLoading, error, refetch } = useParty(id);
   const { data: balance } = usePartyBalance(id);
-  const { data: txnsData, isLoading: txnsLoading } = useTransactions({
-    partyId: id,
-    limit: "8",
-  });
-  const { data: paymentsData, isLoading: paymentsLoading } = usePayments({
-    partyId: id,
-    limit: "8",
-  });
+  const { data: activitiesData, isLoading: activitiesLoading } = usePartyActivities(
+    id,
+    { page: String(activityPage), limit: "10" }
+  );
   const deleteParty = useDeleteParty();
 
-  const activities = useMemo(() => {
-    const transactionActivities =
-      txnsData?.data.map((txn) => ({
-        id: `txn-${txn._id}`,
-        href: `/transactions/${txn._id}`,
-        date: txn.date,
-        title: txn.type === "purchase" ? "Purchase" : "Sale",
-        subtitle: `${txn.product.name} · ${txn.quantity} ${txn.product.unit}`,
-        amountLabel: formatNepaliCurrency(txn.totalAmount),
-        statusLabel:
-          txn.balanceAmount > 0
-            ? `Unpaid ${formatNepaliCurrency(txn.balanceAmount)}`
-            : "Settled",
-        tone: txn.balanceAmount > 0 ? "text-red-500" : "text-green-600",
-        kind: "transaction" as const,
-      })) ?? [];
-
-    const paymentActivities =
-      paymentsData?.data.map((payment) => ({
-        id: `pay-${payment._id}`,
-        href: `/payments/${payment._id}`,
-        date: payment.date,
-        title: payment.direction === "payout" ? "Payment Out" : "Payment In",
-        subtitle: `Method: ${payment.method.replace("_", " ")}`,
-        amountLabel: formatNepaliCurrency(payment.amount),
-        statusLabel: payment.direction === "payout" ? "Paid" : "Received",
-        tone: payment.direction === "payout" ? "text-amber-600" : "text-green-600",
-        kind: "payment" as const,
-      })) ?? [];
-
-    return [...transactionActivities, ...paymentActivities]
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 12);
-  }, [paymentsData?.data, txnsData?.data]);
+  // Reset page when party changes
+  useEffect(() => {
+    setActivityPage(1);
+  }, [id]);
 
   const handleDelete = () => {
     deleteParty.mutate(id, {
@@ -168,6 +135,26 @@ export default function PartyDetailPage({
               <span>{party.address}</span>
             </div>
           )}
+          {/* Product-wise kg summary */}
+          {balance && (balance.salesByProduct?.length || balance.purchasesByProduct?.length) ? (
+            <div
+              className="px-4 py-3"
+              style={{ borderTop: "0.5px solid oklch(0 0 0 / 6%)" }}
+            >
+              <div className="flex flex-wrap gap-2">
+                {balance.salesByProduct?.map((p) => (
+                  <Badge key={`sale-${p.productId}`} variant="secondary" className="bg-green-500/10 text-green-600 border-0 text-[11px]">
+                    {p.productName}: {p.kg.toFixed(2)} kg sold
+                  </Badge>
+                ))}
+                {balance.purchasesByProduct?.map((p) => (
+                  <Badge key={`purchase-${p.productId}`} variant="secondary" className="bg-red-500/10 text-red-600 border-0 text-[11px]">
+                    {p.productName}: {p.kg.toFixed(2)} kg bought
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div
             className="px-4 py-3 text-[13px] text-muted-foreground"
             style={{ borderTop: "0.5px solid oklch(0 0 0 / 6%)" }}
@@ -215,6 +202,17 @@ export default function PartyDetailPage({
                 <p className="text-[15px] font-semibold text-green-600">
                   {formatNepaliCurrency(balance.totalSalesDue)}
                 </p>
+                {balance.salesByProduct && balance.salesByProduct.length > 0 ? (
+                  <div className="text-[11px] text-muted-foreground space-y-0.5">
+                    {balance.salesByProduct.map((p) => (
+                      <div key={p.productId}>{p.productName}: {p.kg.toFixed(2)} kg</div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    {(balance.totalSalesKg ?? 0).toFixed(2)} kg
+                  </p>
+                )}
               </div>
               <div className="bg-red-500/5 backdrop-blur-sm p-3 space-y-1">
                 <p className="text-[12px] text-muted-foreground flex items-center gap-1">
@@ -224,43 +222,65 @@ export default function PartyDetailPage({
                 <p className="text-[15px] font-semibold text-red-600">
                   {formatNepaliCurrency(balance.totalPurchasesDue)}
                 </p>
+                {balance.purchasesByProduct && balance.purchasesByProduct.length > 0 ? (
+                  <div className="text-[11px] text-muted-foreground space-y-0.5">
+                    {balance.purchasesByProduct.map((p) => (
+                      <div key={p.productId}>{p.productName}: {p.kg.toFixed(2)} kg</div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    {(balance.totalPurchasesKg ?? 0).toFixed(2)} kg
+                  </p>
+                )}
               </div>
             </div>
 
             <div
-              className="px-4 py-3 flex items-center justify-between"
+              className="px-4 py-3"
               style={{ borderTop: "0.5px solid oklch(0 0 0 / 6%)" }}
             >
-              <span className="text-[15px] font-medium">Outstanding</span>
-              <div className="text-right">
-                <p
-                  className={cn(
-                    "text-lg font-bold",
-                    balance.direction === "to-receive"
-                      ? "text-green-600"
-                      : balance.direction === "to-pay"
-                      ? "text-red-600"
-                      : "text-muted-foreground"
-                  )}
-                >
-                  {formatNepaliCurrency(Math.abs(balance.outstandingBalance))}
-                </p>
-                <p
-                  className={cn(
-                    "text-[12px]",
-                    balance.direction === "to-receive"
-                      ? "text-green-600"
-                      : balance.direction === "to-pay"
-                      ? "text-red-600"
-                      : "text-muted-foreground"
-                  )}
-                >
-                  {balance.direction === "to-receive"
-                    ? "To Receive"
-                    : balance.direction === "to-pay"
-                    ? "To Pay"
-                    : "Settled"}
-                </p>
+              <div className="space-y-3">
+               
+                <div className="space-y-1.5 text-[13px]">
+
+                  <div
+                    className="flex justify-between items-center pt-2 mt-2"
+                    style={{ borderTop: "1px solid oklch(0 0 0 / 10%)" }}
+                  >
+                    <span className="font-semibold">Total Outstanding</span>
+                    <div className="text-right">
+                      <p
+                        className={cn(
+                          "text-lg font-bold",
+                          balance.direction === "to-receive"
+                            ? "text-green-600"
+                            : balance.direction === "to-pay"
+                            ? "text-red-600"
+                            : "text-muted-foreground"
+                        )}
+                      >
+                        {formatNepaliCurrency(Math.abs(balance.outstandingBalance))}
+                      </p>
+                      <p
+                        className={cn(
+                          "text-[11px] font-medium",
+                          balance.direction === "to-receive"
+                            ? "text-green-600"
+                            : balance.direction === "to-pay"
+                            ? "text-red-600"
+                            : "text-muted-foreground"
+                        )}
+                      >
+                        {balance.direction === "to-receive"
+                          ? "To Receive"
+                          : balance.direction === "to-pay"
+                          ? "To Pay"
+                          : "Settled"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -328,14 +348,14 @@ export default function PartyDetailPage({
             <Wallet className="h-4 w-4 text-muted-foreground" />
           </div>
 
-          {txnsLoading || paymentsLoading ? (
+          {activitiesLoading ? (
             <div
               className="px-4 py-6 text-center text-sm text-muted-foreground"
               style={{ borderTop: "0.5px solid oklch(0 0 0 / 6%)" }}
             >
               Loading activities...
             </div>
-          ) : activities.length === 0 ? (
+          ) : !activitiesData?.data.length ? (
             <div
               className="px-4 py-6 text-center text-sm text-muted-foreground"
               style={{ borderTop: "0.5px solid oklch(0 0 0 / 6%)" }}
@@ -343,46 +363,94 @@ export default function PartyDetailPage({
               No activity yet for this party.
             </div>
           ) : (
-            activities.map((activity, index) => (
-              <Link key={activity.id} href={activity.href}>
+            <>
+              {activitiesData.data.map((activity, index) => {
+                const isTransaction = activity.kind === "transaction";
+                const href = isTransaction
+                  ? `/transactions/${activity._id}`
+                  : `/payments/${activity._id}`;
+                const title = isTransaction
+                  ? activity.type === "purchase"
+                    ? "Purchase"
+                    : "Sale"
+                  : activity.direction === "payout"
+                  ? "Payment Out"
+                  : "Payment In";
+                const subtitle = isTransaction
+                  ? `${activity.product?.name} · ${activity.quantity} ${activity.product?.unit} @ ₹${activity.ratePerKg}`
+                  : `Method: ${activity.method?.replace("_", " ")}`;
+                const amountLabel = formatNepaliCurrency(
+                  isTransaction ? activity.totalAmount ?? 0 : activity.amount ?? 0
+                );
+                const statusLabel = isTransaction
+                  ? (activity.balanceAmount ?? 0) > 0
+                    ? `Unpaid ${formatNepaliCurrency(activity.balanceAmount ?? 0)}`
+                    : "Settled"
+                  : activity.direction === "payout"
+                  ? "Paid"
+                  : "Received";
+                const tone = isTransaction
+                  ? (activity.balanceAmount ?? 0) > 0
+                    ? "text-red-500"
+                    : "text-green-600"
+                  : activity.direction === "payout"
+                  ? "text-amber-600"
+                  : "text-green-600";
+
+                return (
+                  <Link key={activity._id} href={href}>
+                    <div
+                      className="px-4 py-3 flex items-center gap-3 active:bg-foreground/5 transition-colors"
+                      style={{
+                        borderTop: index === 0 ? "0.5px solid oklch(0 0 0 / 6%)" : undefined,
+                        borderBottom:
+                          index < activitiesData.data.length - 1
+                            ? "0.5px solid oklch(0 0 0 / 6%)"
+                            : "none",
+                      }}
+                    >
+                      <div
+                        className={cn(
+                          "h-9 w-9 rounded-xl flex items-center justify-center shrink-0",
+                          isTransaction ? "bg-blue-500/10" : "bg-amber-500/10"
+                        )}
+                      >
+                        {isTransaction ? (
+                          <ArrowLeftRight className="h-4 w-4 text-blue-600" />
+                        ) : (
+                          <Wallet className="h-4 w-4 text-amber-600" />
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[14px] font-medium text-wrap break-words">{title}</p>
+                        <p className="text-[12px] text-muted-foreground text-wrap break-words">
+                          {subtitle} · {toNepaliDate(activity.date)}
+                        </p>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <p className="text-[13px] font-semibold">{amountLabel}</p>
+                        <p className={cn("text-[11px]", tone)}>{statusLabel}</p>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+                    </div>
+                  </Link>
+                );
+              })}
+              {activitiesData.meta.totalPages > 1 && (
                 <div
-                  className="px-4 py-3 flex items-center gap-3 active:bg-foreground/5 transition-colors"
-                  style={{
-                    borderTop: index === 0 ? "0.5px solid oklch(0 0 0 / 6%)" : undefined,
-                    borderBottom:
-                      index < activities.length - 1
-                        ? "0.5px solid oklch(0 0 0 / 6%)"
-                        : "none",
-                  }}
+                  className="px-4 py-2"
+                  style={{ borderTop: "0.5px solid oklch(0 0 0 / 6%)" }}
                 >
-                  <div
-                    className={cn(
-                      "h-9 w-9 rounded-xl flex items-center justify-center shrink-0",
-                      activity.kind === "transaction" ? "bg-blue-500/10" : "bg-amber-500/10"
-                    )}
-                  >
-                    {activity.kind === "transaction" ? (
-                      <ArrowLeftRight className="h-4 w-4 text-blue-600" />
-                    ) : (
-                      <Wallet className="h-4 w-4 text-amber-600" />
-                    )}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-medium truncate">{activity.title}</p>
-                    <p className="text-[12px] text-muted-foreground truncate">
-                      {activity.subtitle} · {toNepaliDate(activity.date)}
-                    </p>
-                  </div>
-
-                  <div className="text-right shrink-0">
-                    <p className="text-[13px] font-semibold">{activity.amountLabel}</p>
-                    <p className={cn("text-[11px]", activity.tone)}>{activity.statusLabel}</p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+                  <PaginationControls
+                    currentPage={activitiesData.meta.page}
+                    totalPages={activitiesData.meta.totalPages}
+                    onPageChange={setActivityPage}
+                  />
                 </div>
-              </Link>
-            ))
+              )}
+            </>
           )}
         </div>
       </div>

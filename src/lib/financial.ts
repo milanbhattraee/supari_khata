@@ -35,10 +35,6 @@ export interface PartyOutstandingResult {
   payable: number;
   /** receivable - payable (positive = in your favour) */
   net: number;
-  /** Customer advance — customer paid more than owed on sale side (always >= 0) */
-  customerAdvance: number;
-  /** Supplier advance — you paid more than owed on purchase side (always >= 0) */
-  supplierAdvance: number;
 }
 
 export function safeNumber(value: unknown): number {
@@ -95,20 +91,10 @@ export function calculatePartyOutstanding(
   const saleSide = openingCredit + totalSalesDue - totalPayIn;
   const purchaseSide = openingDebit + totalPurchasesDue - totalPayout;
 
-  // Track advances: when payments exceed what's owed on each side
-  // saleSide < 0 means customer paid more than they owe (customer advance)
-  // purchaseSide < 0 means you paid more than you owe (supplier advance)
-  const customerAdvance = saleSide < 0 ? roundMoney(Math.abs(saleSide)) : 0;
-  const supplierAdvance = purchaseSide < 0 ? roundMoney(Math.abs(purchaseSide)) : 0;
-
-  // For outstanding calculation, floor each side to 0 (advances don't offset the other side)
-  const effectiveSaleSide = Math.max(0, saleSide);
-  const effectivePurchaseSide = Math.max(0, purchaseSide);
-
-  // Positive net means the party owes you (Receivable).
-  // Negative net means you owe the party (Payable).
-  const netValue = effectiveSaleSide - effectivePurchaseSide;
-  const net = roundMoney(netValue);
+  // Net calculation without flooring - allows advances to flip balance direction
+  // Positive net = party owes you (To Receive)
+  // Negative net = you owe party (To Pay)
+  const net = roundMoney(saleSide - purchaseSide);
 
   const receivable = net > 0 ? net : 0;
   const payable = net < 0 ? Math.abs(net) : 0;
@@ -117,8 +103,6 @@ export function calculatePartyOutstanding(
     receivable,
     payable,
     net,
-    customerAdvance,
-    supplierAdvance,
   };
 }
 

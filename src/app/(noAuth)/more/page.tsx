@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   Package,
   Factory,
+  Receipt,
   ChevronRight,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
@@ -23,6 +24,13 @@ const menuItems = [
     label: "Production",
     description: "Processing entries",
     color: "bg-orange-500",
+  },
+  {
+    href: "/expenses",
+    icon: Receipt,
+    label: "Expenses",
+    description: "Business expenses",
+    color: "bg-red-500",
   },
 ];
 

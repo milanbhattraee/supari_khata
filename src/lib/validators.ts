@@ -5,6 +5,7 @@ import {
   CreateTransactionDTO,
   CreatePaymentDTO,
   CreateProductionEntryDTO,
+  CreateExpenseDTO,
 } from "@/types/dto";
 
 type ValidationResult = { valid: true } | { valid: false; errors: Record<string, string> };
@@ -175,6 +176,23 @@ export function validateCreateProductionEntry(
     body.outputQuantity > body.inputQuantity
   ) {
     errors.outputQuantity = "Output quantity cannot exceed input quantity";
+  }
+
+  return Object.keys(errors).length ? { valid: false, errors } : { valid: true };
+}
+
+// ── Expense ───────────────────────────────────────────────────
+
+export function validateCreateExpense(body: Partial<CreateExpenseDTO>): ValidationResult {
+  const errors: Record<string, string> = {};
+
+  if (body.amount === undefined || body.amount === null) {
+    errors.amount = "Amount is required";
+  } else if (typeof body.amount !== "number" || body.amount <= 0) {
+    errors.amount = "Amount must be a positive number";
+  }
+  if (!body.description?.trim()) {
+    errors.description = "Description is required";
   }
 
   return Object.keys(errors).length ? { valid: false, errors } : { valid: true };

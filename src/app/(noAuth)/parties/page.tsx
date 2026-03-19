@@ -90,12 +90,12 @@ export default function PartiesPage() {
                   }}
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-[15px] font-medium truncate">{party.name}</h3>
+                    <div className="flex flex-col gap-1">
+                      <h3 className="text-[15px] font-medium leading-tight">{party.name}</h3>
                       <Badge
                         variant="secondary"
                         className={cn(
-                          "text-[10px] capitalize shrink-0 border-0",
+                          "w-fit text-[10px] capitalize shrink-0 border-0",
                           categoryColors[party.category]
                         )}
                       >
@@ -117,10 +117,12 @@ export default function PartiesPage() {
                       )}
                     </div>
                   </div>
-                  <div className="text-right shrink-0 flex items-center gap-3">
-                    <div className="flex flex-col items-end justify-center">
+                  <div className="text-right shrink min-w-0 max-w-[55%] flex items-center gap-2">
+                    <div className="flex flex-col items-end justify-center min-w-0">
                       {(() => {
                         const net = party.balance?.net ?? party.openingBalance;
+                        const salesByProduct = party.balance?.salesByProduct ?? [];
+                        const purchasesByProduct = party.balance?.purchasesByProduct ?? [];
                         if (net > 0) {
                           return (
                             <>
@@ -128,6 +130,16 @@ export default function PartiesPage() {
                               <p className="text-[14px] font-semibold text-green-600">
                                 {formatNepaliCurrency(net)}
                               </p>
+                              {salesByProduct.length > 0 && (
+                                <span className="text-[10px] text-muted-foreground text-right mt-0.5 break-words whitespace-normal leading-tight">
+                                  {salesByProduct.map((p, i) => (
+                                    <span key={p.productId}>
+                                      {i > 0 && " · "}
+                                      {p.productName}: {p.kg.toFixed(2)} kg
+                                    </span>
+                                  ))}
+                                </span>
+                              )}
                             </>
                           );
                         } else if (net < 0) {
@@ -137,6 +149,16 @@ export default function PartiesPage() {
                               <p className="text-[14px] font-semibold text-red-500">
                                 {formatNepaliCurrency(Math.abs(net))}
                               </p>
+                              {purchasesByProduct.length > 0 && (
+                                <span className="text-[10px] text-muted-foreground text-right mt-0.5 break-words whitespace-normal leading-tight">
+                                  {purchasesByProduct.map((p, i) => (
+                                    <span key={p.productId}>
+                                      {i > 0 && " · "}
+                                      {p.productName}: {p.kg.toFixed(2)} kg
+                                    </span>
+                                  ))}
+                                </span>
+                              )}
                             </>
                           );
                         } else {
@@ -146,6 +168,13 @@ export default function PartiesPage() {
                               <p className="text-[13px] font-medium text-gray-500">
                                 Rs. 0.00
                               </p>
+                              {(salesByProduct.length > 0 || purchasesByProduct.length > 0) && (
+                                <span className="text-[10px] text-muted-foreground text-right mt-0.5 break-words whitespace-normal leading-tight">
+                                  {salesByProduct.map((p) => `${p.productName}: ${p.kg.toFixed(2)} kg sold`).join(" · ")}
+                                  {salesByProduct.length > 0 && purchasesByProduct.length > 0 && " · "}
+                                  {purchasesByProduct.map((p) => `${p.productName}: ${p.kg.toFixed(2)} kg bought`).join(" · ")}
+                                </span>
+                              )}
                             </>
                           );
                         }

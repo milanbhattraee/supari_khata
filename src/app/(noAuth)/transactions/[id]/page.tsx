@@ -1,10 +1,12 @@
 "use client";
 
 import { use, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowUpRight,
   ArrowDownLeft,
+  Pencil,
   Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -66,15 +68,22 @@ export default function TransactionDetailPage({
         title="Transaction Detail"
         back
         action={
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-destructive"
-            onClick={() => setShowDeleteDialog(true)}
-            disabled={deleteTransaction.isPending}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <div className="flex gap-2">
+            <Link href={`/transactions/${id}/edit`}>
+              <Button variant="ghost" size="icon">
+                <Pencil className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-destructive"
+              onClick={() => setShowDeleteDialog(true)}
+              disabled={deleteTransaction.isPending}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         }
       />
 

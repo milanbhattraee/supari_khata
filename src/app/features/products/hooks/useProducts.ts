@@ -4,6 +4,22 @@ import { api } from "@/lib/api-client";
 import { ProductResponseDTO, CreateProductDTO, UpdateProductDTO } from "../types";
 import { PaginationMeta } from "@/types/dto";
 
+interface ProductActivity {
+  _id: string;
+  type: "purchase" | "sale";
+  date: string;
+  party: {
+    _id: string;
+    name: string;
+  };
+  quantity: number;
+  ratePerKg: number;
+  totalAmount: number;
+  balanceAmount: number;
+  notes: string | null;
+  createdAt: string;
+}
+
 export function useProducts(params?: Record<string, string>) {
   return useQuery({
     queryKey: ["products", params],
@@ -59,5 +75,17 @@ export function useDeleteProduct() {
       toast.success("Product deleted");
     },
     onError: (err) => toast.error(err.message),
+  });
+}
+
+export function useProductActivities(id: string, params?: Record<string, string>) {
+  return useQuery({
+    queryKey: ["products", id, "activities", params],
+    queryFn: () =>
+      api.get<ProductActivity[]>(`/products/${id}/activities`, params).then((res) => ({
+        data: res.data!,
+        meta: res.meta as PaginationMeta,
+      })),
+    enabled: !!id,
   });
 }

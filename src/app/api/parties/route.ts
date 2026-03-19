@@ -12,7 +12,7 @@ import {
   buildMeta,
 } from "@/lib/apiResponse";
 import { validateCreateParty } from "@/lib/validators";
-import { CreatePartyDTO, PartyResponseDTO } from "@/types/dto";
+import { CreatePartyDTO, PartyResponseDTO, ProductKgBreakdown } from "@/types/dto";
 import { toPartyDTO } from "@/lib/dto-mappers";
 import { requireApiAuth } from "@/lib/api-auth";
 import mongoose from "mongoose";
@@ -59,16 +59,17 @@ export async function GET(req: NextRequest) {
     ]);
 
     // ── Bulk balance calculation ────────────────────────────────────────────
-    // 2 aggregations for ALL parties on this page (replaces N × 2 queries).
+    // 3 aggregations for ALL parties on this page (replaces N × 3 queries).
     const pagePartyIds = parties.map((p) => p._id);
 
-    const [txnBalances, standalonePayments] = await Promise.all([
+    const [txnBalances, standalonePayments, productKgBreakdown] = await Promise.all([
       Transaction.aggregate([
         { $match: { partyId: { $in: pagePartyIds } } },
         {
           $group: {
             _id: { partyId: "$partyId", type: "$type" },
             totalBalance: { $sum: { $toDouble: "$balanceAmount" } },
+            totalQuantity: { $sum: { $toDouble: "$quantity" } },
           },
         },
       ]),
@@ -86,16 +87,41 @@ export async function GET(req: NextRequest) {
           },
         },
       ]),
+      // Product-wise kg breakdown for all parties on this page
+      Transaction.aggregate([
+        { $match: { partyId: { $in: pagePartyIds } } },
+        {
+          $lookup: {
+            from: "products",
+            localField: "productId",
+            foreignField: "_id",
+            as: "product",
+          },
+        },
+        { $unwind: "$product" },
+        {
+          $group: {
+            _id: { partyId: "$partyId", type: "$type", productId: "$productId", productName: "$product.name" },
+            totalQuantity: { $sum: { $toDouble: "$quantity" } },
+          },
+        },
+      ]),
     ]);
 
     // Build lookup maps
-    const txnByParty = new Map<string, { sale: number; purchase: number }>();
+    const txnByParty = new Map<string, { sale: number; purchase: number; saleKg: number; purchaseKg: number }>();
     for (const row of txnBalances) {
       const pid = row._id.partyId.toString();
-      if (!txnByParty.has(pid)) txnByParty.set(pid, { sale: 0, purchase: 0 });
+      if (!txnByParty.has(pid)) txnByParty.set(pid, { sale: 0, purchase: 0, saleKg: 0, purchaseKg: 0 });
       const entry = txnByParty.get(pid)!;
-      if (row._id.type === "sale") entry.sale = row.totalBalance;
-      if (row._id.type === "purchase") entry.purchase = row.totalBalance;
+      if (row._id.type === "sale") {
+        entry.sale = row.totalBalance;
+        entry.saleKg = row.totalQuantity;
+      }
+      if (row._id.type === "purchase") {
+        entry.purchase = row.totalBalance;
+        entry.purchaseKg = row.totalQuantity;
+      }
     }
 
     const payByParty = new Map<string, { payin: number; payout: number }>();
@@ -105,6 +131,29 @@ export async function GET(req: NextRequest) {
       const entry = payByParty.get(pid)!;
       if (row._id.direction === "payin") entry.payin = row.totalAmount;
       if (row._id.direction === "payout") entry.payout = row.totalAmount;
+    }
+
+    // Build product-wise kg lookup map
+    const productKgByParty = new Map<string, { sales: ProductKgBreakdown[]; purchases: ProductKgBreakdown[] }>();
+    for (const row of productKgBreakdown) {
+      const pid = row._id.partyId.toString();
+      if (!productKgByParty.has(pid)) productKgByParty.set(pid, { sales: [], purchases: [] });
+      const entry = productKgByParty.get(pid)!;
+      const breakdown: ProductKgBreakdown = {
+        productId: row._id.productId.toString(),
+        productName: row._id.productName,
+        kg: Math.round((row.totalQuantity ?? 0) * 100) / 100,
+      };
+      if (row._id.type === "sale") {
+        entry.sales.push(breakdown);
+      } else if (row._id.type === "purchase") {
+        entry.purchases.push(breakdown);
+      }
+    }
+    // Sort by product name for consistent display
+    for (const entry of productKgByParty.values()) {
+      entry.sales.sort((a, b) => a.productName.localeCompare(b.productName));
+      entry.purchases.sort((a, b) => a.productName.localeCompare(b.productName));
     }
 
     // Enrich each party DTO with calculated balance
@@ -121,8 +170,9 @@ export async function GET(req: NextRequest) {
           ? raw
           : 0;
 
-      const txn = txnByParty.get(pid) ?? { sale: 0, purchase: 0 };
+      const txn = txnByParty.get(pid) ?? { sale: 0, purchase: 0, saleKg: 0, purchaseKg: 0 };
       const pay = payByParty.get(pid) ?? { payin: 0, payout: 0 };
+      const productKg = productKgByParty.get(pid) ?? { sales: [], purchases: [] };
 
       const result = calculatePartyOutstanding({
         openingBalance,
@@ -136,6 +186,10 @@ export async function GET(req: NextRequest) {
         receivable: result.receivable,
         payable: result.payable,
         net: result.net,
+        salesKg: txn.saleKg,
+        purchasesKg: txn.purchaseKg,
+        salesByProduct: productKg.sales,
+        purchasesByProduct: productKg.purchases,
       };
 
       return dto;
