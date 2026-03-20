@@ -1,13 +1,17 @@
 import type { NextConfig } from "next";
-import withSerwistInit from "@serwist/next";
+import withPWAInit from "@ducanh2912/next-pwa";
 
-const withSerwist = withSerwistInit({
-  swSrc: "src/app/sw.ts",
-  swDest: "public/sw.js",
+const withPWA = withPWAInit({
+  dest: "public",
   disable: process.env.NODE_ENV === "development",
+  register: true,
+  skipWaiting: true,
+  cacheOnFrontEndNav: true,
+  reloadOnOnline: true,
 });
 
 const nextConfig: NextConfig = {
+  // Empty turbopack config to silence warning (PWA uses webpack for build)
   turbopack: {},
   // Security headers
   async headers() {
@@ -51,4 +55,4 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
 };
 
-export default withSerwist(nextConfig);
+export default withPWA(nextConfig);
