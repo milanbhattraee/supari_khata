@@ -160,6 +160,8 @@ export interface UpdateTransactionDTO {
   date?: string;
   /** Allow correcting paidAmount (triggers recalculation of balance) */
   paidAmount?: number;
+  /** Allow correcting ratePerKg (triggers recalculation of totalAmount and balance) */
+  ratePerKg?: number;
 }
 
 export interface TransactionResponseDTO {

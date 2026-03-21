@@ -42,8 +42,8 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 }
 
 // ── PUT /api/transactions/:id ─────────────────────────────────
-// Only editable fields: notes, date, paidAmount
-// Core financial fields (qty, rate) are immutable after creation
+// Editable fields: notes, date, paidAmount, ratePerKg
+// Immutable fields: quantity, totalAmount, type, partyId, productId
 
 export async function PUT(req: NextRequest, { params }: RouteContext) {
   try {
@@ -55,8 +55,8 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
 
     const body: Partial<UpdateTransactionDTO> = await req.json();
 
-    // Prevent edits to financial core
-    const immutableFields = ["quantity", "ratePerKg", "totalAmount", "type", "partyId", "productId"];
+    // Prevent edits to financial core (ratePerKg is editable)
+    const immutableFields = ["quantity", "totalAmount", "type", "partyId", "productId"];
     for (const field of immutableFields) {
       if (field in body) {
         return badRequestResponse(
@@ -78,7 +78,13 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
         return badRequestResponse("Paid amount cannot be negative");
       }
 
-      const total = parseFloat(transaction.totalAmount.toString());
+      // Get the total based on whether rate is also being updated
+      const qty = parseFloat(transaction.quantity.toString());
+      const rate = body.ratePerKg !== undefined
+        ? roundMoney(body.ratePerKg)
+        : parseFloat(transaction.ratePerKg.toString());
+      const total = roundMoney(qty * rate);
+
       const nextPaid = roundMoney(body.paidAmount);
       if (nextPaid > total) {
         return badRequestResponse(
@@ -88,6 +94,35 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
       transaction.paidAmount = mongoose.Types.Decimal128.fromString(
         nextPaid.toFixed(2)
       );
+    }
+
+    // If ratePerKg is being updated, validate and set
+    if (body.ratePerKg !== undefined) {
+      if (typeof body.ratePerKg !== "number" || !Number.isFinite(body.ratePerKg)) {
+        return badRequestResponse("Rate per kg must be a valid number");
+      }
+
+      if (body.ratePerKg < 0) {
+        return badRequestResponse("Rate per kg cannot be negative");
+      }
+
+      const nextRate = roundMoney(body.ratePerKg);
+      transaction.ratePerKg = mongoose.Types.Decimal128.fromString(
+        nextRate.toFixed(2)
+      );
+
+      // Validate paidAmount doesn't exceed new total (if paidAmount wasn't also updated)
+      if (body.paidAmount === undefined) {
+        const qty = parseFloat(transaction.quantity.toString());
+        const newTotal = roundMoney(qty * nextRate);
+        const currentPaid = parseFloat(transaction.paidAmount.toString());
+
+        if (currentPaid > newTotal) {
+          return badRequestResponse(
+            `Cannot reduce rate: paid amount (${currentPaid}) would exceed new total (${newTotal})`
+          );
+        }
+      }
     }
 
     if (body.notes !== undefined) transaction.notes = body.notes;

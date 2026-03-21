@@ -19,6 +19,7 @@ import { formatNepaliCurrency } from "@/lib/format";
 
 interface EditTransactionFormValues {
   paidAmount: number;
+  ratePerKg: number;
   date?: string;
   notes?: string;
 }
@@ -47,6 +48,7 @@ export default function EditTransactionPage({
     if (txn) {
       reset({
         paidAmount: txn.paidAmount,
+        ratePerKg: txn.ratePerKg,
         date: txn.date,
         notes: txn.notes ?? "",
       });
@@ -54,7 +56,9 @@ export default function EditTransactionPage({
   }, [txn, reset]);
 
   const paidAmount = watch("paidAmount") || 0;
-  const balance = txn ? txn.totalAmount - paidAmount : 0;
+  const ratePerKg = watch("ratePerKg") || 0;
+  const totalAmount = txn ? txn.quantity * ratePerKg : 0;
+  const balance = totalAmount - paidAmount;
 
   const onSubmit = (data: EditTransactionFormValues) => {
     if (!txn) return;
@@ -63,6 +67,7 @@ export default function EditTransactionPage({
     updateTransaction.mutate(
       {
         paidAmount: data.paidAmount,
+        ratePerKg: data.ratePerKg,
         date: data.date,
         notes: data.notes,
       },
@@ -102,14 +107,6 @@ export default function EditTransactionPage({
               <span className="text-muted-foreground">Quantity</span>
               <p className="font-medium">{txn.quantity} {txn.product.unit}</p>
             </div>
-            <div>
-              <span className="text-muted-foreground">Rate/kg</span>
-              <p className="font-medium">{formatNepaliCurrency(txn.ratePerKg)}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Total Amount</span>
-              <p className="font-semibold">{formatNepaliCurrency(txn.totalAmount)}</p>
-            </div>
           </div>
         </div>
 
@@ -120,17 +117,35 @@ export default function EditTransactionPage({
           </p>
 
           <div className="space-y-2">
+            <Label htmlFor="ratePerKg">Rate per kg</Label>
+            <Input
+              id="ratePerKg"
+              type="number"
+              step="0.01"
+              min="0"
+              {...register("ratePerKg", {
+                valueAsNumber: true,
+                min: { value: 0, message: "Rate cannot be negative" },
+                required: "Rate is required",
+              })}
+            />
+            {errors.ratePerKg && (
+              <p className="text-xs text-destructive">{errors.ratePerKg.message}</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="paidAmount">Paid Amount</Label>
             <Input
               id="paidAmount"
               type="number"
               step="0.01"
               min="0"
-              max={txn.totalAmount}
+              max={totalAmount}
               {...register("paidAmount", {
                 valueAsNumber: true,
                 min: { value: 0, message: "Paid amount cannot be negative" },
-                max: { value: txn.totalAmount, message: `Cannot exceed total of ${formatNepaliCurrency(txn.totalAmount)}` },
+                max: { value: totalAmount, message: `Cannot exceed total of ${formatNepaliCurrency(totalAmount)}` },
               })}
             />
             {errors.paidAmount && (
@@ -167,8 +182,12 @@ export default function EditTransactionPage({
         {/* Balance summary */}
         <div className="glass-card rounded-2xl p-4 space-y-2">
           <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Quantity × Rate</span>
+            <span className="text-muted-foreground">{txn.quantity} × {formatNepaliCurrency(ratePerKg)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Total Amount</span>
-            <span className="font-semibold">{formatNepaliCurrency(txn.totalAmount)}</span>
+            <span className="font-semibold">{formatNepaliCurrency(totalAmount)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Paid</span>
