@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { NepaliDatePicker } from "@/components/ui/nepali-date-picker";
 import { FormDrawerPage } from "@/components/form-drawer-page";
 import { ListSkeleton } from "@/components/skeletons";
@@ -40,7 +41,7 @@ function CreateTransactionContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const createTxn = useCreateTransaction();
-  const { data: partiesData, isLoading: partiesLoading } = useParties();
+  const { data: partiesData, isLoading: partiesLoading } = useParties({ limit: "100" });
   const { data: productsData, isLoading: productsLoading } = useProducts();
   const prefilledPartyId = searchParams.get("partyId") ?? "";
   const prefilledType = searchParams.get("type");
@@ -131,23 +132,18 @@ function CreateTransactionContent() {
               name="partyId"
               control={control}
               render={({ field }) => (
-                <Select
+                <SearchableSelect
                   value={field.value}
-                  onValueChange={(val: string | null) => field.onChange(val ?? "")}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select party">
-                      {field.value ? partyMap.get(field.value) ?? "Select party" : "Select party"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {partiesData?.data.map((p) => (
-                      <SelectItem key={p._id} value={p._id}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={field.onChange}
+                  placeholder="Select party"
+                  searchPlaceholder="Search parties..."
+                  options={
+                    partiesData?.data.map((p) => ({
+                      value: p._id,
+                      label: p.name,
+                    })) ?? []
+                  }
+                />
               )}
             />
             {errors.partyId && (

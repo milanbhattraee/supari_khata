@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { NepaliDatePicker } from "@/components/ui/nepali-date-picker";
 import { FormDrawerPage } from "@/components/form-drawer-page";
 import { ListSkeleton } from "@/components/skeletons";
@@ -48,7 +49,7 @@ function CreatePaymentContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const createPayment = useCreatePayment();
-  const { data: partiesData, isLoading: partiesLoading } = useParties();
+  const { data: partiesData, isLoading: partiesLoading } = useParties({ limit: "100" });
   const prefilledPartyId = searchParams.get("partyId") ?? "";
   const prefilledAmount = Number(searchParams.get("amount") ?? "");
   const prefilledDirection = searchParams.get("direction");
@@ -152,25 +153,20 @@ function CreatePaymentContent() {
             <Controller
               name="partyId"
               control={control}
-              render={({ field }) => {
-                const selectedName = partiesData?.data.find((p) => p._id === field.value)?.name;
-                return (
-                  <Select value={field.value} onValueChange={(val: string | null) => field.onChange(val ?? "") }>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select party">
-                        {selectedName ?? "Select party"}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {partiesData?.data.map((p) => (
-                        <SelectItem key={p._id} value={p._id}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                );
-              }}
+              render={({ field }) => (
+                <SearchableSelect
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder="Select party"
+                  searchPlaceholder="Search parties..."
+                  options={
+                    partiesData?.data.map((p) => ({
+                      value: p._id,
+                      label: p.name,
+                    })) ?? []
+                  }
+                />
+              )}
             />
             {errors.partyId && (
               <p className="text-xs text-destructive">
