@@ -140,6 +140,43 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* ── Section: Products Stock ────────────────────────────────────
+             Current stock levels for all products */}
+        {data.allProducts.length > 0 && (
+          <div className="glass-card rounded-2xl overflow-hidden">
+            <div className="flex items-center gap-2 px-4 pt-4 pb-2">
+              <Package className="h-4 w-4 text-purple-600" />
+              <h3 className="text-[13px] font-semibold">Products Stock</h3>
+            </div>
+            {data.allProducts.map((product, i) => (
+              <Link key={product._id} href={`/products/${product._id}`}>
+                <div className="flex items-center justify-between px-4 py-3 active:bg-foreground/5"
+                  style={{
+                    borderBottom: i < data.allProducts.length - 1
+                      ? "0.5px solid oklch(0 0 0 / 6%)"
+                      : "none",
+                  }}
+                >
+                  <span className="text-[15px]">{product.name}</span>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant="secondary"
+                      className={`border-0 text-xs ${
+                        product.currentStock < 100
+                          ? "bg-orange-500/10 text-orange-600"
+                          : "bg-purple-500/10 text-purple-600"
+                      }`}
+                    >
+                      {formatNumber(product.currentStock, 1)} {product.unit}
+                    </Badge>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+
         {/* ── Section 2: Cash Position ────────────────────────────────────
              Actual cash movement — money that physically came in/went out.
              Uses paidAmount from transactions + standalone payments. */}

@@ -21,7 +21,7 @@ import { requireApiAuth } from "@/lib/api-auth";
 import { buildUtcDateRange } from "@/lib/nepal-date-range";
 
 // ── GET /api/payments ─────────────────────────────────────────
-// Query: partyId, direction, method, fromDate, toDate, page, limit
+// Query: partyId, direction, method, fromDate, toDate, search, page, limit
 
 export async function GET(req: NextRequest) {
   try {
@@ -42,6 +42,23 @@ export async function GET(req: NextRequest) {
     if (query.method) filter.method = query.method;
     const dateRange = buildUtcDateRange(query.fromDate, query.toDate);
     if (dateRange) filter.date = dateRange;
+
+    // Handle search - search by party name
+    if (query.search) {
+      const searchRegex = new RegExp(query.search, "i");
+
+      // Find matching party IDs
+      const Party = (await import("@/models/parties.model")).default;
+      const matchingParties = await Party.find({ name: searchRegex }).select("_id").lean();
+      const partyIds = matchingParties.map((p) => p._id);
+
+      if (partyIds.length > 0) {
+        filter.partyId = { $in: partyIds };
+      } else {
+        // No matches found, return empty result
+        return successResponse([], "Payments fetched", 200, buildMeta(0, page, limit));
+      }
+    }
 
     const [payments, total] = await Promise.all([
       Payment.find(filter)

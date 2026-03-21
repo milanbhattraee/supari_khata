@@ -84,6 +84,7 @@ export async function GET(_req: NextRequest) {
     const [
       totalProducts,
       yearlyTransactions,
+      allProductsData,
       stockSummary,
       cashflowTxns,
       cashflowPayments,
@@ -118,7 +119,12 @@ export async function GET(_req: NextRequest) {
         },
       ]),
 
-      // 3. Low stock products
+      // 3. All active products (for stock display)
+      Product.find({ isActive: true })
+        .sort({ name: 1 })
+        .lean(),
+
+      // 4. Low stock products
       Product.find({
         isActive: true,
         currentStock: {
@@ -514,6 +520,18 @@ export async function GET(_req: NextRequest) {
       totalOutstandingReceivable: roundMoney(totalReceivable),
       totalOutstandingPayable: roundMoney(totalPayable),
 
+      allProducts: allProductsData.map((p) => ({
+        _id: (p._id as mongoose.Types.ObjectId).toString(),
+        name: p.name,
+        unit: p.unit,
+        currentStock: parseFloat(
+          (p.currentStock as mongoose.Types.Decimal128)?.toString() ?? "0"
+        ),
+        description: p.description ?? null,
+        isActive: p.isActive,
+        createdAt: (p.createdAt as Date).toISOString(),
+        updatedAt: (p.updatedAt as Date).toISOString(),
+      })),
       lowStockProducts: stockSummary.map((p) => ({
         _id: (p._id as mongoose.Types.ObjectId).toString(),
         name: p.name,

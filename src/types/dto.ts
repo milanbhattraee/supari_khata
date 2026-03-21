@@ -348,6 +348,8 @@ export interface DashboardSummaryDTO {
   totalOutstandingReceivable: number;     // money customers owe you (sum of all party receivables)
   totalOutstandingPayable: number;        // money you owe suppliers (sum of all party payables)
 
+  // ── Product Stock ────────────────────────────────────────────────────────
+  allProducts: ProductResponseDTO[];      // all active products with current stock
   lowStockProducts: ProductResponseDTO[];
   cashflow: {
     daily: { date: string; moneyIn: number; moneyOut: number }[];

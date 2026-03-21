@@ -18,7 +18,7 @@ import { requireApiAuth } from "@/lib/api-auth";
 import { buildUtcDateRange } from "@/lib/nepal-date-range";
 
 // ── GET /api/transactions ─────────────────────────────────────
-// Supports: type, partyId, productId, fromDate, toDate, page, limit
+// Supports: type, partyId, productId, fromDate, toDate, search, page, limit
 
 export async function GET(req: NextRequest) {
   try {
@@ -38,6 +38,36 @@ export async function GET(req: NextRequest) {
     if (query.productId) filter.productId = new mongoose.Types.ObjectId(query.productId);
     const dateRange = buildUtcDateRange(query.fromDate, query.toDate);
     if (dateRange) filter.date = dateRange;
+
+    // Handle search - search by party name or product name
+    if (query.search) {
+      const searchRegex = new RegExp(query.search, "i");
+
+      // Find matching party IDs
+      const Party = (await import("@/models/parties.model")).default;
+      const matchingParties = await Party.find({ name: searchRegex }).select("_id").lean();
+      const partyIds = matchingParties.map((p) => p._id);
+
+      // Find matching product IDs
+      const Product = (await import("@/models/product.model")).default;
+      const matchingProducts = await Product.find({ name: searchRegex }).select("_id").lean();
+      const productIds = matchingProducts.map((p) => p._id);
+
+      // Filter transactions where party OR product matches
+      if (partyIds.length > 0 || productIds.length > 0) {
+        const orConditions: Record<string, unknown>[] = [];
+        if (partyIds.length > 0) {
+          orConditions.push({ partyId: { $in: partyIds } });
+        }
+        if (productIds.length > 0) {
+          orConditions.push({ productId: { $in: productIds } });
+        }
+        filter.$or = orConditions;
+      } else {
+        // No matches found, return empty result
+        return successResponse([], "Transactions fetched", 200, buildMeta(0, page, limit));
+      }
+    }
 
     const [transactions, total] = await Promise.all([
       Transaction.find(filter)
