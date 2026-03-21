@@ -18,8 +18,9 @@ import {
 import { formatNepaliCurrency } from "@/lib/format";
 
 interface EditTransactionFormValues {
-  paidAmount: number;
+  quantity: number;
   ratePerKg: number;
+  paidAmount: number;
   date?: string;
   notes?: string;
 }
@@ -47,17 +48,19 @@ export default function EditTransactionPage({
   useEffect(() => {
     if (txn) {
       reset({
-        paidAmount: txn.paidAmount,
+        quantity: txn.quantity,
         ratePerKg: txn.ratePerKg,
+        paidAmount: txn.paidAmount,
         date: txn.date,
         notes: txn.notes ?? "",
       });
     }
   }, [txn, reset]);
 
-  const paidAmount = watch("paidAmount") || 0;
+  const quantity = watch("quantity") || 0;
   const ratePerKg = watch("ratePerKg") || 0;
-  const totalAmount = txn ? txn.quantity * ratePerKg : 0;
+  const paidAmount = watch("paidAmount") || 0;
+  const totalAmount = quantity * ratePerKg;
   const balance = totalAmount - paidAmount;
 
   const onSubmit = (data: EditTransactionFormValues) => {
@@ -66,8 +69,9 @@ export default function EditTransactionPage({
     const partyId = txn.party._id;
     updateTransaction.mutate(
       {
-        paidAmount: data.paidAmount,
+        quantity: data.quantity,
         ratePerKg: data.ratePerKg,
+        paidAmount: data.paidAmount,
         date: data.date,
         notes: data.notes,
       },
@@ -104,8 +108,8 @@ export default function EditTransactionPage({
               <p className="font-medium">{txn.product.name}</p>
             </div>
             <div>
-              <span className="text-muted-foreground">Quantity</span>
-              <p className="font-medium">{txn.quantity} {txn.product.unit}</p>
+              <span className="text-muted-foreground">Unit</span>
+              <p className="font-medium">{txn.product.unit}</p>
             </div>
           </div>
         </div>
@@ -117,7 +121,25 @@ export default function EditTransactionPage({
           </p>
 
           <div className="space-y-2">
-            <Label htmlFor="ratePerKg">Rate per kg</Label>
+            <Label htmlFor="quantity">Quantity ({txn.product.unit})</Label>
+            <Input
+              id="quantity"
+              type="number"
+              step="0.001"
+              min="0.001"
+              {...register("quantity", {
+                valueAsNumber: true,
+                min: { value: 0.001, message: "Quantity must be greater than 0" },
+                required: "Quantity is required",
+              })}
+            />
+            {errors.quantity && (
+              <p className="text-xs text-destructive">{errors.quantity.message}</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="ratePerKg">Rate per {txn.product.unit}</Label>
             <Input
               id="ratePerKg"
               type="number"
@@ -183,7 +205,7 @@ export default function EditTransactionPage({
         <div className="glass-card rounded-2xl p-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Quantity × Rate</span>
-            <span className="text-muted-foreground">{txn.quantity} × {formatNepaliCurrency(ratePerKg)}</span>
+            <span className="text-muted-foreground">{quantity} × {formatNepaliCurrency(ratePerKg)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Total Amount</span>

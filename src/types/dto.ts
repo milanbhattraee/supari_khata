@@ -162,6 +162,8 @@ export interface UpdateTransactionDTO {
   paidAmount?: number;
   /** Allow correcting ratePerKg (triggers recalculation of totalAmount and balance) */
   ratePerKg?: number;
+  /** Allow correcting quantity (triggers stock adjustment and recalculation) */
+  quantity?: number;
 }
 
 export interface TransactionResponseDTO {

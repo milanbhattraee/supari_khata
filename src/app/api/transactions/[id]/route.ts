@@ -42,8 +42,8 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 }
 
 // ── PUT /api/transactions/:id ─────────────────────────────────
-// Editable fields: notes, date, paidAmount, ratePerKg
-// Immutable fields: quantity, totalAmount, type, partyId, productId
+// Editable fields: notes, date, paidAmount, ratePerKg, quantity
+// Immutable fields: totalAmount, type, partyId, productId
 
 export async function PUT(req: NextRequest, { params }: RouteContext) {
   try {
@@ -55,8 +55,8 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
 
     const body: Partial<UpdateTransactionDTO> = await req.json();
 
-    // Prevent edits to financial core (ratePerKg is editable)
-    const immutableFields = ["quantity", "totalAmount", "type", "partyId", "productId"];
+    // Prevent edits to truly immutable fields
+    const immutableFields = ["totalAmount", "type", "partyId", "productId"];
     for (const field of immutableFields) {
       if (field in body) {
         return badRequestResponse(
@@ -68,7 +68,15 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
     const transaction = await Transaction.findById(id);
     if (!transaction) return notFoundResponse("Transaction");
 
-    // If paidAmount is being updated, validate on rounded monetary value first.
+    // Calculate the effective quantity and rate for validation
+    const oldQty = parseFloat(transaction.quantity.toString());
+    const newQty = body.quantity !== undefined ? roundMoney(body.quantity) : oldQty;
+    const newRate = body.ratePerKg !== undefined
+      ? roundMoney(body.ratePerKg)
+      : parseFloat(transaction.ratePerKg.toString());
+    const newTotal = roundMoney(newQty * newRate);
+
+    // If paidAmount is being updated, validate against new total
     if (body.paidAmount !== undefined) {
       if (typeof body.paidAmount !== "number" || !Number.isFinite(body.paidAmount)) {
         return badRequestResponse("Paid amount must be a valid number");
@@ -78,17 +86,10 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
         return badRequestResponse("Paid amount cannot be negative");
       }
 
-      // Get the total based on whether rate is also being updated
-      const qty = parseFloat(transaction.quantity.toString());
-      const rate = body.ratePerKg !== undefined
-        ? roundMoney(body.ratePerKg)
-        : parseFloat(transaction.ratePerKg.toString());
-      const total = roundMoney(qty * rate);
-
       const nextPaid = roundMoney(body.paidAmount);
-      if (nextPaid > total) {
+      if (nextPaid > newTotal) {
         return badRequestResponse(
-          `Paid amount cannot exceed total bill of ${total}`
+          `Paid amount cannot exceed total bill of ${newTotal}`
         );
       }
       transaction.paidAmount = mongoose.Types.Decimal128.fromString(
@@ -106,20 +107,76 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
         return badRequestResponse("Rate per kg cannot be negative");
       }
 
-      const nextRate = roundMoney(body.ratePerKg);
       transaction.ratePerKg = mongoose.Types.Decimal128.fromString(
-        nextRate.toFixed(2)
+        newRate.toFixed(2)
       );
 
       // Validate paidAmount doesn't exceed new total (if paidAmount wasn't also updated)
       if (body.paidAmount === undefined) {
-        const qty = parseFloat(transaction.quantity.toString());
-        const newTotal = roundMoney(qty * nextRate);
         const currentPaid = parseFloat(transaction.paidAmount.toString());
-
         if (currentPaid > newTotal) {
           return badRequestResponse(
             `Cannot reduce rate: paid amount (${currentPaid}) would exceed new total (${newTotal})`
+          );
+        }
+      }
+    }
+
+    // If quantity is being updated, handle stock adjustment
+    if (body.quantity !== undefined) {
+      if (typeof body.quantity !== "number" || !Number.isFinite(body.quantity)) {
+        return badRequestResponse("Quantity must be a valid number");
+      }
+
+      if (body.quantity <= 0) {
+        return badRequestResponse("Quantity must be greater than 0");
+      }
+
+      const Product = (await import("@/models/product.model")).default;
+      const product = await Product.findById(transaction.productId);
+      if (!product) {
+        return badRequestResponse("Associated product not found");
+      }
+
+      const currentStock = parseFloat(product.currentStock.toString());
+      const qtyDiff = newQty - oldQty;
+
+      if (transaction.type === "purchase") {
+        // Purchase: increasing qty adds more stock, decreasing removes stock
+        const newStock = currentStock + qtyDiff;
+        if (newStock < 0) {
+          return badRequestResponse(
+            `Cannot reduce quantity: would result in negative stock (current: ${roundMoney(currentStock)}, change: ${roundMoney(qtyDiff)})`
+          );
+        }
+        product.currentStock = mongoose.Types.Decimal128.fromString(
+          roundMoney(newStock).toFixed(3)
+        );
+      } else if (transaction.type === "sale") {
+        // Sale: increasing qty removes more stock, decreasing adds stock back
+        const newStock = currentStock - qtyDiff;
+        if (newStock < 0) {
+          return badRequestResponse(
+            `Cannot increase quantity: insufficient stock (current: ${roundMoney(currentStock)}, needed: ${roundMoney(qtyDiff)})`
+          );
+        }
+        product.currentStock = mongoose.Types.Decimal128.fromString(
+          roundMoney(newStock).toFixed(3)
+        );
+      }
+
+      await product.save();
+
+      transaction.quantity = mongoose.Types.Decimal128.fromString(
+        newQty.toFixed(3)
+      );
+
+      // Validate paidAmount doesn't exceed new total (if paidAmount wasn't also updated)
+      if (body.paidAmount === undefined) {
+        const currentPaid = parseFloat(transaction.paidAmount.toString());
+        if (currentPaid > newTotal) {
+          return badRequestResponse(
+            `Cannot reduce quantity: paid amount (${currentPaid}) would exceed new total (${newTotal})`
           );
         }
       }
