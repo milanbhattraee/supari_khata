@@ -181,7 +181,7 @@ export function NepaliDatePicker({
 
       {/* Calendar dropdown */}
       {open && (
-        <div className="absolute top-full left-0 z-50 mt-1 w-[260px] bg-background/95 backdrop-blur-3xl rounded-2xl p-3 shadow-2xl border border-border">
+        <div className="absolute top-full left-0 z-[9999] mt-1 w-[260px] bg-background/95 backdrop-blur-3xl rounded-2xl p-3 shadow-2xl border border-border">
           {/* Month / Year navigation */}
           <div className="flex items-center justify-between mb-2">
             <button
